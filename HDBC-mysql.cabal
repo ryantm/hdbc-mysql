@@ -1,0 +1,16 @@
+Name:             HDBC-mysql
+Version:          0.1
+Description:      This package provides a MySQL driver for HDBC.
+Maintainer:       Chris Waterson <waterson@maubi.net>
+Author:           Chris Waterson
+Copyright:        Copyright (c) 2009 Chris Waterson
+License:          LGPL
+License-file:     COPYING
+Author:           Chris Waterson
+Maintainer:       waterson@maubi.net
+Build-Depends:    base, time, HDBC>=1.1.0
+Exposed-modules:  Database.HDBC.MySQL
+Other-modules:    Database.HDBC.MySQL.Connection
+ghc-options:      -Wall -O
+Extra-Libraries:  mysqlclient
+Build-Type:       Custom
