@@ -333,8 +333,12 @@ bindOfSqlValue (Types.SqlEpochTime epoch) =
                       s  = t `mod` 60
                   in MYSQL_TIME (fromIntegral y) (fromIntegral m) (fromIntegral d) h mn s
 
-bindOfSqlValue (Types.SqlTimeDiff _) =
-    error "bindOfSqlValue :: SqlTimeDiff"
+bindOfSqlValue (Types.SqlTimeDiff n) =
+    let h  = fromIntegral $ n `div` 3600
+        mn = fromIntegral $ n `div` 60 `mod` 60
+        s  = fromIntegral $ n `mod` 60
+        t  = MYSQL_TIME 0 0 0 h mn s in
+    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_TIME}
 
 -- A nasty helper function that cuts down on the boilerplate a bit.
 bindOfSqlValue' :: (Integral a, Storable b) =>
@@ -450,7 +454,10 @@ nonNullCellValue #{const MYSQL_TYPE_DATETIME} p = do
                     time = s + mn * 60 + h * 3600
                 in UTCTime day (secondsToDiffTime $ fromIntegral time)
 
-
+nonNullCellValue #{const MYSQL_TYPE_TIME} p = do
+  (MYSQL_TIME _ _ _ h mn s) <- peek $ castPtr p
+  let secs = 3600 * h + 60 * mn + s
+  return $ Types.SqlTimeDiff (fromIntegral secs)
 
 nonNullCellValue t _ = return $ Types.SqlString ("unknown type " ++ show t)
 
