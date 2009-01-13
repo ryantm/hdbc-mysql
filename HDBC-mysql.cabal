@@ -12,5 +12,4 @@ Build-Depends:    base, time, HDBC>=1.1.0
 Exposed-modules:  Database.HDBC.MySQL
 Other-modules:    Database.HDBC.MySQL.Connection
 ghc-options:      -Wall -O
-Extra-Libraries:  mysqlclient
 Build-Type:       Custom
