@@ -5,12 +5,30 @@ Things to do:
 
   * Double-check coverage for result bindings.
 
-  * Throw exceptions instead of "error".  Where is throwDyn?
-
   * Fill in various other missing holes (notably, table and statement
     description).
 
   * Verify that FFI's "with*" functions create a pinned pointer.
+
+  * Figure out how to do stuff on Windows.  From John, "autoconf is
+    not portable to Windows.  I briefly had applied a patch from
+    someone to add it to HDBC-PostgreSQL, but will remove it since I
+    realized this."
+
+  * Integrate with test coverage.  "You should be able to adapt the
+    PostgreSQL testsuite to MySQL with little effort.  It would be
+    good to test your library with my standard testsuite.  See testsrc
+    in HDBC-postgresql package."
+
+  * Fix leaks!  "Your library will leak memory, file descriptors, and
+    connections if someone fails to call disconnect or finish.  The
+    HDBC Haddock docs state that a user does not need to explicitly
+    call disconnect, since garbage collection will free the object.
+    Haskell's ForeignPtrs provide a way to call a C function when
+    something is garbage-collected.  You might find the C helper in
+    the HDBC-postgresql package helpful, since it handles what to do
+    if that function gets called after the user has already called
+    disconnect."
 
   * All the parameters that you need to create a connection is a bit
     nasty.  I could go parse a JDBC-like string, but, ...
