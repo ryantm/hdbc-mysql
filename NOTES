@@ -1,0 +1,29 @@
+This works with 5.0.75.  I haven't tried with 4.x nor 5.1.  I suspect
+the former won't work, but the latter probably will.
+
+N.B. that all the paths are hard-coded and assume MacPorts-ish
+locations.
+
+Things to do:
+
+  * Complete coverage for SqlValue types in parameter binding.  I
+    don't think MySQL has anything that maps onto the SqlTimeDiff
+    type.
+
+  * Double-check coverage for result bindings.
+
+  * Throw exceptions instead of "error".  Where is throwDyn?
+
+  * Fill in various other missing holes (notably, table and statement
+    description).
+
+  * Verify that FFI's "with*" functions create a pinned pointer.
+
+  * All the parameters that you need to create a connection is a bit
+    nasty.  I could go parse a JDBC-like string, but, ...
+
+There's a little test program that runs a query and spews out the
+results.  To compile it,
+
+  ghc -idist/build -L/opt/local/lib/mysql5/mysql -lmysqlclient --make Test
+
