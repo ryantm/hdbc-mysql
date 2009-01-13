@@ -14,7 +14,7 @@ main = do conn <- connectMySQL "127.0.0.1" "root" "" "event" 3306 ""
           tables <- getTables conn
           putStrLn $ "the tables in this database are " ++ (show tables)
 
-          stmt <- prepare conn "SELECT NOW()"
+          stmt <- prepare conn "SELECT CURTIME()"
           execute stmt []
           rows <- fetchAllRows stmt
           forM_ rows $ \row -> putStrLn $ show row
