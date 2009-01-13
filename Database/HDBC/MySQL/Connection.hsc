@@ -503,16 +503,14 @@ statementError :: Ptr MYSQL_STMT -> IO a
 statementError stmt_ = do
   errno <- mysql_stmt_errno stmt_
   msg <- peekCString =<< mysql_stmt_error stmt_ 
-  --throwDyn $ Types.SqlError "" errno msg
-  error (msg ++ " (" ++ show errno ++ ")")
+  throwDyn $ Types.SqlError "" (fromIntegral errno) msg
 
 -- Returns the last connection-level error.
 connectionError :: Ptr MYSQL -> IO a
 connectionError mysql_ = do
   errno <- mysql_errno mysql_
   msg <- peekCString =<< mysql_error mysql_
-  --throwDyn $ Types.SqlError "" errno msg
-  error (msg ++ " (" ++ show errno ++ ")")
+  throwDyn $ Types.SqlError "" (fromIntegral errno) msg
 
 {- ---------------------------------------------------------------------- -}
 
