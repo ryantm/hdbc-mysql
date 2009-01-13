@@ -1,2 +1,2 @@
-extra-lib-dirs: @MYSQLLIBDIR@
 include-dirs: @MYSQLINCDIR@
+ld-options: @MYSQLLDOPTS@

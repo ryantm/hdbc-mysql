@@ -616,7 +616,7 @@ host_alias
 target_alias
 mysql_config
 MYSQLINCDIR
-MYSQLLIBDIR
+MYSQLLDOPTS
 LIBOBJS
 LTLIBOBJS'
 ac_subst_files=''
@@ -1668,14 +1668,14 @@ echo "$as_me: error: mysql_config executable not found. Make sure mysql_config i
 else
     { echo "$as_me:$LINENO: checking MySQL header dir" >&5
 echo $ECHO_N "checking MySQL header dir... $ECHO_C" >&6; }
-    MYSQLINCDIR=`${mysql_config} --include`
+    MYSQLINCDIR=`${mysql_config} --include | sed -e 's/-I//g'`
     { echo "$as_me:$LINENO: result: $MYSQLINCDIR" >&5
 echo "${ECHO_T}$MYSQLINCDIR" >&6; }
-    { echo "$as_me:$LINENO: checking MySQL library dir" >&5
-echo $ECHO_N "checking MySQL library dir... $ECHO_C" >&6; }
-    PGLIBDIR=`${mysql_config} --libs`
-    { echo "$as_me:$LINENO: result: $MYSQLLIBDIR" >&5
-echo "${ECHO_T}$MYSQLLIBDIR" >&6; }
+    { echo "$as_me:$LINENO: checking MySQL linker options" >&5
+echo $ECHO_N "checking MySQL linker options... $ECHO_C" >&6; }
+    MYSQLLDOPTS=`${mysql_config} --libs`
+    { echo "$as_me:$LINENO: result: $MYSQLLDOPTS" >&5
+echo "${ECHO_T}$MYSQLLDOPTS" >&6; }
 fi
 
 
@@ -2349,7 +2349,7 @@ host_alias!$host_alias$ac_delim
 target_alias!$target_alias$ac_delim
 mysql_config!$mysql_config$ac_delim
 MYSQLINCDIR!$MYSQLINCDIR$ac_delim
-MYSQLLIBDIR!$MYSQLLIBDIR$ac_delim
+MYSQLLDOPTS!$MYSQLLDOPTS$ac_delim
 LIBOBJS!$LIBOBJS$ac_delim
 LTLIBOBJS!$LTLIBOBJS$ac_delim
 _ACEOF
