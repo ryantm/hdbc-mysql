@@ -83,8 +83,8 @@ connectMySQL host user passwd db port unixSocket = do
 
         return $ Connection
                    { disconnect           = mysql_close mysql_
-                   , commit               = doCommit mysql_
-                   , rollback             = doRollback mysql_
+                   , commit               = doCommit mysql_ >> doStartTransaction mysql_
+                   , rollback             = doRollback mysql_ >> doStartTransaction mysql_
                    , run                  = doRun mysql_
                    , prepare              = newStatement mysql_
                    , clone                = connectMySQL host user passwd db port unixSocket
@@ -95,7 +95,7 @@ connectMySQL host user passwd db port unixSocket = do
                    , dbServerVer          = serverver
                    , dbTransactionSupport = True
                    , getTables            = doGetTables mysql_
-                   , describeTable        = error "describeTable"
+                   , describeTable        = \_ -> return []
                    }
 
 -- A MySQL statement: wraps mysql.h's MYSQL_STMT struct.
@@ -112,6 +112,7 @@ data MYSQL_FIELD = MYSQL_FIELD
     , fieldMaxLength :: CULong
     , fieldType      :: CInt
     , fieldDecimals  :: CUInt
+    , fieldFlags     :: CUInt
     }
 
 instance Storable MYSQL_FIELD where
@@ -124,12 +125,14 @@ instance Storable MYSQL_FIELD where
       fmaxlen <- (#peek MYSQL_FIELD, max_length) p
       ftype   <- (#peek MYSQL_FIELD, type) p
       fdec    <- (#peek MYSQL_FIELD, decimals) p
+      fflags  <- (#peek MYSQL_FIELD, flags) p
       return $ MYSQL_FIELD
                  { fieldName      = fname
                  , fieldLength    = flength
                  , fieldMaxLength = fmaxlen
                  , fieldType      = ftype
                  , fieldDecimals  = fdec
+                 , fieldFlags     = fflags
                  }
 
     poke _ _ = error "MYSQL_FIELD: poke"
@@ -214,18 +217,19 @@ newStatement mysql_ query = do
   -- statement at those buffers.  Again, if there are no fields,
   -- this'll be a no-op.
   results <- mapM resultOfField fields
-  withArray results $ \bind_ -> do
-      rv' <- mysql_stmt_bind_result stmt_ bind_
-      when (rv' /= 0) (statementError stmt_)
+  when (not $ null results)
+       (withArray results $ \bind_ -> do
+          rv' <- mysql_stmt_bind_result stmt_ bind_
+          when (rv' /= 0) (statementError stmt_))
 
   return $ Types.Statement
              { Types.execute        = execute stmt_
              , Types.executeMany    = mapM_ $ execute stmt_
-             , Types.finish         = mysql_stmt_close stmt_ >> return ()
+             , Types.finish         = finish stmt_
              , Types.fetchRow       = fetchRow stmt_ results
              , Types.originalQuery  = query
              , Types.getColumnNames = return $ map fieldName fields
-             , Types.describeResult = error "describeResult"
+             , Types.describeResult = return $ map sqlColDescOf fields
              }
 
 -- Returns the list of fields from a prepared statement.
@@ -253,7 +257,10 @@ execute stmt_ params = do
   rv <- mysql_stmt_execute stmt_
   when (rv /= 0) (statementError stmt_)
   nrows <- mysql_stmt_affected_rows stmt_
-  return $ fromIntegral nrows
+
+  -- mysql_stmt_affected_rows returns -1 when called on a SELECT
+  -- statement; the HDBC API expects zero to be returned in this case.
+  return $ fromIntegral (if nrows == (-1 :: CULLong) then 0 else nrows)
 
 -- Binds placeholder parameters to values.
 bindParams :: Ptr MYSQL_STMT -> [Types.SqlValue] -> IO ()
@@ -395,6 +402,7 @@ boundType #{const MYSQL_TYPE_FLOAT}      _ = #{const MYSQL_TYPE_DOUBLE}
 boundType #{const MYSQL_TYPE_DATE}       _ = #{const MYSQL_TYPE_DATETIME}
 boundType #{const MYSQL_TYPE_TIMESTAMP}  _ = #{const MYSQL_TYPE_DATETIME}
 boundType #{const MYSQL_TYPE_NEWDATE}    _ = #{const MYSQL_TYPE_DATETIME}
+boundType #{const MYSQL_TYPE_BLOB}       _ = #{const MYSQL_TYPE_VAR_STRING}
 boundType t                              _ = t
 
 -- Returns the amount of storage required for a particular result
@@ -461,25 +469,71 @@ nonNullCellValue #{const MYSQL_TYPE_TIME} p = do
 
 nonNullCellValue t _ = return $ Types.SqlString ("unknown type " ++ show t)
 
+sqlColDescOf :: MYSQL_FIELD -> (String, ColTypes.SqlColDesc)
+sqlColDescOf f =
+    let typ      = typeIdOf $ fieldType f
+        sz       = Just $ fromIntegral $ fieldLength f
+        octlen   = Just $ fromIntegral $ fieldLength f
+        digits   = Just $ fromIntegral $ fieldDecimals f
+        nullable = Just $ (fieldFlags f .&. #{const NOT_NULL_FLAG}) == 0
+    in (fieldName f, ColTypes.SqlColDesc typ sz octlen digits nullable)
+
+typeIdOf :: CInt -> ColTypes.SqlTypeId
+typeIdOf #{const MYSQL_TYPE_DECIMAL}     = ColTypes.SqlDecimalT
+typeIdOf #{const MYSQL_TYPE_TINY}        = ColTypes.SqlTinyIntT
+typeIdOf #{const MYSQL_TYPE_SHORT}       = ColTypes.SqlSmallIntT
+typeIdOf #{const MYSQL_TYPE_LONG}        = ColTypes.SqlIntegerT
+typeIdOf #{const MYSQL_TYPE_FLOAT}       = ColTypes.SqlFloatT
+typeIdOf #{const MYSQL_TYPE_DOUBLE}      = ColTypes.SqlDoubleT
+typeIdOf #{const MYSQL_TYPE_NULL}        = ColTypes.SqlUnknownT "NULL"
+typeIdOf #{const MYSQL_TYPE_TIMESTAMP}   = ColTypes.SqlTimestampT
+typeIdOf #{const MYSQL_TYPE_LONGLONG}    = ColTypes.SqlNumericT
+typeIdOf #{const MYSQL_TYPE_INT24}       = ColTypes.SqlIntegerT
+typeIdOf #{const MYSQL_TYPE_DATE}        = ColTypes.SqlDateT
+typeIdOf #{const MYSQL_TYPE_TIME}        = ColTypes.SqlTimeT
+typeIdOf #{const MYSQL_TYPE_DATETIME}    = ColTypes.SqlTimestampT
+typeIdOf #{const MYSQL_TYPE_YEAR}        = ColTypes.SqlNumericT
+typeIdOf #{const MYSQL_TYPE_NEWDATE}     = ColTypes.SqlDateT
+typeIdOf #{const MYSQL_TYPE_VARCHAR}     = ColTypes.SqlVarCharT
+typeIdOf #{const MYSQL_TYPE_BIT}         = ColTypes.SqlBitT
+typeIdOf #{const MYSQL_TYPE_NEWDECIMAL}  = ColTypes.SqlDecimalT
+typeIdOf #{const MYSQL_TYPE_ENUM}        = ColTypes.SqlUnknownT "ENUM"
+typeIdOf #{const MYSQL_TYPE_SET}         = ColTypes.SqlUnknownT "SET"
+typeIdOf #{const MYSQL_TYPE_TINY_BLOB}   = ColTypes.SqlBinaryT
+typeIdOf #{const MYSQL_TYPE_MEDIUM_BLOB} = ColTypes.SqlBinaryT
+typeIdOf #{const MYSQL_TYPE_LONG_BLOB}   = ColTypes.SqlBinaryT
+typeIdOf #{const MYSQL_TYPE_BLOB}        = ColTypes.SqlBinaryT
+typeIdOf #{const MYSQL_TYPE_VAR_STRING}  = ColTypes.SqlVarCharT
+typeIdOf #{const MYSQL_TYPE_STRING}      = ColTypes.SqlCharT
+typeIdOf #{const MYSQL_TYPE_GEOMETRY}    = ColTypes.SqlUnknownT "GEOMETRY"
+typeIdOf n                               = ColTypes.SqlUnknownT ("unknown type " ++ show n)
+
+finish :: Ptr MYSQL_STMT -> IO ()
+finish stmt_ = do
+  -- XXX this can get called more than once, and if it is, will result
+  -- in a double-free.
+  mysql_stmt_close stmt_
+  return ()
+
 doRun :: Ptr MYSQL -> String -> [Types.SqlValue] -> IO Integer
 doRun mysql_ query params = do
   stmt <- newStatement mysql_ query
   Types.execute stmt params
 
-doQuery :: Ptr MYSQL -> String -> IO ()
-doQuery mysql_ stmt =
+doQuery :: String -> Ptr MYSQL -> IO ()
+doQuery stmt mysql_ =
     withCString stmt $ \stmt_ -> do
       rv <- mysql_query mysql_ stmt_
       when (rv /= 0) (connectionError mysql_)
 
 doCommit :: Ptr MYSQL -> IO ()
-doCommit = flip doQuery $ "COMMIT"
+doCommit = doQuery "COMMIT"
   
 doRollback :: Ptr MYSQL -> IO ()
-doRollback = flip doQuery $ "ROLLBACK"
+doRollback = doQuery "ROLLBACK"
 
 doStartTransaction :: Ptr MYSQL -> IO ()
-doStartTransaction = flip doQuery $ "START TRANSACTION"
+doStartTransaction = doQuery "START TRANSACTION"
 
 doGetTables :: Ptr MYSQL -> IO [String]
 doGetTables mysql_ = do
