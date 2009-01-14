@@ -15,11 +15,6 @@ Things to do:
     someone to add it to HDBC-PostgreSQL, but will remove it since I
     realized this."
 
-  * Integrate with test coverage.  "You should be able to adapt the
-    PostgreSQL testsuite to MySQL with little effort.  It would be
-    good to test your library with my standard testsuite.  See testsrc
-    in HDBC-postgresql package."
-
   * Fix leaks!  "Your library will leak memory, file descriptors, and
     connections if someone fails to call disconnect or finish.  The
     HDBC Haddock docs state that a user does not need to explicitly
@@ -38,3 +33,12 @@ results.  To compile it,
 
   ghc -idist/build -L/opt/local/lib/mysql5/mysql -lmysqlclient --make Test
 
+I'm still trying to get the Makefile right so that it can build the
+test sources: it's not there yet.  Here's how I've been doing it, for
+now:
+
+  cd testsrc
+  ghc --make -package base-3.0.3.0 -package HUnit -package HDBC -Wall -i../dist/build -i.. -L/opt/local/lib/mysql5/mysql -lmysqlclient -o runtests runtests.hs
+
+One issue is that I want the location of the MySQL library to come
+from autoconf, rather than be hard-coded.
