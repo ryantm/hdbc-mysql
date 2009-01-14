@@ -7,10 +7,13 @@ where
 
 import Control.Exception
 import Control.Monad
+import Control.Concurrent.MVar
 import Foreign
 import Foreign.C
+import Data.Maybe (isJust)
 import Data.Time
 import Data.Time.Clock.POSIX
+import System.Mem.Weak
 
 import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
@@ -81,12 +84,14 @@ connectMySQL host user passwd db port unixSocket = do
         mysql_autocommit mysql_ 0
         doStartTransaction mysql_
 
-        return $ Connection
-                   { disconnect           = mysql_close mysql_
+        stmtref <- newMVar []
+
+        let conn = Connection
+                   { disconnect           = disconnectMySQL mysql_ stmtref
                    , commit               = doCommit mysql_ >> doStartTransaction mysql_
                    , rollback             = doRollback mysql_ >> doStartTransaction mysql_
-                   , run                  = doRun mysql_
-                   , prepare              = newStatement mysql_
+                   , run                  = doRun mysql_ stmtref
+                   , prepare              = newStatement mysql_ stmtref
                    , clone                = connectMySQL host user passwd db port unixSocket
                    , hdbcDriverName       = "mysql"
                    , hdbcClientVer        = clientver
@@ -94,9 +99,12 @@ connectMySQL host user passwd db port unixSocket = do
                    , proxiedClientVer     = show protover
                    , dbServerVer          = serverver
                    , dbTransactionSupport = True
-                   , getTables            = doGetTables mysql_
+                   , getTables            = doGetTables mysql_ stmtref
                    , describeTable        = \_ -> return []
                    }
+
+        addFinalizer conn $ disconnect conn
+        return conn
 
 -- A MySQL statement: wraps mysql.h's MYSQL_STMT struct.
 data MYSQL_STMT
@@ -196,8 +204,8 @@ instance Storable MYSQL_TIME where
       (#poke MYSQL_TIME, second) p (timeSecond t)
 
 -- Prepares a new Statement for execution.
-newStatement :: Ptr MYSQL -> String -> IO Types.Statement
-newStatement mysql_ query = do
+newStatement :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> String -> IO Types.Statement
+newStatement mysql_ stmtref query = do
   -- XXX it would probably make sense to revisit the flow-of-control
   -- here: if we blow up while preparing the statement, we'll bail
   -- without closing it.
@@ -222,15 +230,33 @@ newStatement mysql_ query = do
           rv' <- mysql_stmt_bind_result stmt_ bind_
           when (rv' /= 0) (statementError stmt_))
 
+  -- Add a finalizer that closes the statement.  This ensures that the
+  -- statement will be closed exactly once, either when "finish" is
+  -- called or when it's garbage collected.
+  stmtWeakPtr <- mkWeakPtr stmt_ (Just $ mysql_stmt_close stmt_ >> return())
+
+  -- Add a weak reference to the statement to connection's set of
+  -- active statements, while pruning out any statements that has
+  -- already gone away.
+  withMVar stmtref $ \stmts -> do
+    stmts' <- filterM alive stmts
+    return $ stmtWeakPtr:stmts'
+
   return $ Types.Statement
              { Types.execute        = execute stmt_
              , Types.executeMany    = mapM_ $ execute stmt_
-             , Types.finish         = finish stmt_
+             , Types.finish         = finalize stmtWeakPtr
              , Types.fetchRow       = fetchRow stmt_ results
              , Types.originalQuery  = query
              , Types.getColumnNames = return $ map fieldName fields
              , Types.describeResult = return $ map sqlColDescOf fields
              }
+
+    where alive :: Weak (Ptr MYSQL_STMT) -> IO Bool
+          alive ptr = do
+            s <- deRefWeak ptr
+            return $ isJust s
+
 
 -- Returns the list of fields from a prepared statement.
 fieldsOf :: Ptr MYSQL_STMT -> IO [MYSQL_FIELD]
@@ -508,16 +534,9 @@ typeIdOf #{const MYSQL_TYPE_STRING}      = ColTypes.SqlCharT
 typeIdOf #{const MYSQL_TYPE_GEOMETRY}    = ColTypes.SqlUnknownT "GEOMETRY"
 typeIdOf n                               = ColTypes.SqlUnknownT ("unknown type " ++ show n)
 
-finish :: Ptr MYSQL_STMT -> IO ()
-finish stmt_ = do
-  -- XXX this can get called more than once, and if it is, will result
-  -- in a double-free.
-  mysql_stmt_close stmt_
-  return ()
-
-doRun :: Ptr MYSQL -> String -> [Types.SqlValue] -> IO Integer
-doRun mysql_ query params = do
-  stmt <- newStatement mysql_ query
+doRun :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> String -> [Types.SqlValue] -> IO Integer
+doRun mysql_ stmtref query params = do
+  stmt <- newStatement mysql_ stmtref query
   Types.execute stmt params
 
 doQuery :: String -> Ptr MYSQL -> IO ()
@@ -535,9 +554,9 @@ doRollback = doQuery "ROLLBACK"
 doStartTransaction :: Ptr MYSQL -> IO ()
 doStartTransaction = doQuery "START TRANSACTION"
 
-doGetTables :: Ptr MYSQL -> IO [String]
-doGetTables mysql_ = do
-  stmt <- newStatement mysql_ "SHOW TABLES"
+doGetTables :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> IO [String]
+doGetTables mysql_ stmtref = do
+  stmt <- newStatement mysql_ stmtref "SHOW TABLES"
   Types.execute stmt []
   rows <- unfoldRows stmt
   return $ map (fromSql . head) rows
@@ -551,6 +570,11 @@ doGetTables mysql_ = do
             fromSql :: Types.SqlValue -> String
             fromSql (Types.SqlString s) = s
             fromSql _                   = error "SHOW TABLES returned a table whose name wasn't a string"
+
+disconnectMySQL :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> IO ()
+disconnectMySQL mysql_ stmtref = do
+  withMVar stmtref $ mapM_ finalize
+  mysql_close mysql_
 
 -- Returns the last statement-level error.
 statementError :: Ptr MYSQL_STMT -> IO a
