@@ -3,6 +3,8 @@ the former won't work, but the latter probably will.
 
 Things to do:
 
+  * Figure out why I have to DROP TABLE IF EXISTS.
+
   * Double-check coverage for result bindings.
 
   * Fill in various other missing holes (notably, table and statement
