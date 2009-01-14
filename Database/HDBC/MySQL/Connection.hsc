@@ -85,9 +85,10 @@ connectMySQL host user passwd db port unixSocket = do
         doStartTransaction mysql_
 
         stmtref <- newMVar []
+        connWeakPtr <- mkWeakPtr mysql_ (Just $ disconnectMySQL mysql_ stmtref)
 
-        let conn = Connection
-                   { disconnect           = disconnectMySQL mysql_ stmtref
+        return $ Connection
+                   { disconnect           = finalize connWeakPtr
                    , commit               = doCommit mysql_ >> doStartTransaction mysql_
                    , rollback             = doRollback mysql_ >> doStartTransaction mysql_
                    , run                  = doRun mysql_ stmtref
@@ -103,11 +104,11 @@ connectMySQL host user passwd db port unixSocket = do
                    , describeTable        = \_ -> return []
                    }
 
-        addFinalizer conn $ disconnect conn
-        return conn
-
 -- A MySQL statement: wraps mysql.h's MYSQL_STMT struct.
 data MYSQL_STMT
+
+type WeakPtrStmt = Weak (Ptr MYSQL_STMT)
+
 
 -- A MySQL result: wraps mysql.h's MYSQL_RES struct.
 data MYSQL_RES
@@ -204,13 +205,17 @@ instance Storable MYSQL_TIME where
       (#poke MYSQL_TIME, second) p (timeSecond t)
 
 -- Prepares a new Statement for execution.
-newStatement :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> String -> IO Types.Statement
+newStatement :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> IO Types.Statement
 newStatement mysql_ stmtref query = do
-  -- XXX it would probably make sense to revisit the flow-of-control
-  -- here: if we blow up while preparing the statement, we'll bail
-  -- without closing it.
   stmt_ <- mysql_stmt_init mysql_
   when (stmt_ == nullPtr) (connectionError mysql_)
+
+  -- Add a finalizer that closes the statement.  This ensures that the
+  -- statement will be closed exactly once, either when "finish" is
+  -- called or when it's garbage collected.  Also, if anything below
+  -- blows up, then the finalizer will to get run on the statement
+  -- object eventually and clean up the native structure.
+  stmtWeakPtr <- mkWeakPtr stmt_ (Just $ mysql_stmt_close stmt_ >> return ())
 
   withCString query $ \query_ -> do
       rv <- mysql_stmt_prepare stmt_ query_ (fromIntegral $ length query)
@@ -230,21 +235,21 @@ newStatement mysql_ stmtref query = do
           rv' <- mysql_stmt_bind_result stmt_ bind_
           when (rv' /= 0) (statementError stmt_))
 
-  -- Add a finalizer that closes the statement.  This ensures that the
-  -- statement will be closed exactly once, either when "finish" is
-  -- called or when it's garbage collected.
-  stmtWeakPtr <- mkWeakPtr stmt_ (Just $ mysql_stmt_close stmt_ >> return())
-
   -- Add a weak reference to the statement to connection's set of
-  -- active statements, while pruning out any statements that has
+  -- active statements, while pruning out any statements that have
   -- already gone away.
   withMVar stmtref $ \stmts -> do
     stmts' <- filterM alive stmts
     return $ stmtWeakPtr:stmts'
 
+  -- XXX Cheesy!  We'll pass the mysql_ pointer to execute (which
+  -- doesn't need it, but maybe some day could make use of it) simply
+  -- to entrain the connection while the statement is still around,
+  -- ensuring that we don't collect the former until nobody references
+  -- the latter.
   return $ Types.Statement
-             { Types.execute        = execute stmt_
-             , Types.executeMany    = mapM_ $ execute stmt_
+             { Types.execute        = execute mysql_ stmt_
+             , Types.executeMany    = mapM_ $ execute mysql_ stmt_
              , Types.finish         = finalize stmtWeakPtr
              , Types.fetchRow       = fetchRow stmt_ results
              , Types.originalQuery  = query
@@ -252,11 +257,10 @@ newStatement mysql_ stmtref query = do
              , Types.describeResult = return $ map sqlColDescOf fields
              }
 
-    where alive :: Weak (Ptr MYSQL_STMT) -> IO Bool
+    where alive :: WeakPtrStmt -> IO Bool
           alive ptr = do
             s <- deRefWeak ptr
             return $ isJust s
-
 
 -- Returns the list of fields from a prepared statement.
 fieldsOf :: Ptr MYSQL_STMT -> IO [MYSQL_FIELD]
@@ -277,12 +281,16 @@ fieldsOfResult res_ = do
     else liftM2 (:) (peek field_) (fieldsOfResult res_)
 
 -- Executes a statement with the specified binding parameters.
-execute :: Ptr MYSQL_STMT -> [Types.SqlValue] -> IO Integer
-execute stmt_ params = do
+execute :: Ptr MYSQL -> Ptr MYSQL_STMT -> [Types.SqlValue] -> IO Integer
+execute mysql_ stmt_ params = do
   bindParams stmt_ params
   rv <- mysql_stmt_execute stmt_
   when (rv /= 0) (statementError stmt_)
   nrows <- mysql_stmt_affected_rows stmt_
+
+  -- Use the mysql_ parameter in a way that it can't get optimized
+  -- away.
+  mysql_info mysql_
 
   -- mysql_stmt_affected_rows returns -1 when called on a SELECT
   -- statement; the HDBC API expects zero to be returned in this case.
@@ -534,7 +542,7 @@ typeIdOf #{const MYSQL_TYPE_STRING}      = ColTypes.SqlCharT
 typeIdOf #{const MYSQL_TYPE_GEOMETRY}    = ColTypes.SqlUnknownT "GEOMETRY"
 typeIdOf n                               = ColTypes.SqlUnknownT ("unknown type " ++ show n)
 
-doRun :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> String -> [Types.SqlValue] -> IO Integer
+doRun :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> [Types.SqlValue] -> IO Integer
 doRun mysql_ stmtref query params = do
   stmt <- newStatement mysql_ stmtref query
   Types.execute stmt params
@@ -554,7 +562,7 @@ doRollback = doQuery "ROLLBACK"
 doStartTransaction :: Ptr MYSQL -> IO ()
 doStartTransaction = doQuery "START TRANSACTION"
 
-doGetTables :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> IO [String]
+doGetTables :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO [String]
 doGetTables mysql_ stmtref = do
   stmt <- newStatement mysql_ stmtref "SHOW TABLES"
   Types.execute stmt []
@@ -571,7 +579,7 @@ doGetTables mysql_ stmtref = do
             fromSql (Types.SqlString s) = s
             fromSql _                   = error "SHOW TABLES returned a table whose name wasn't a string"
 
-disconnectMySQL :: Ptr MYSQL -> MVar [Weak (Ptr MYSQL_STMT)] -> IO ()
+disconnectMySQL :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO ()
 disconnectMySQL mysql_ stmtref = do
   withMVar stmtref $ mapM_ finalize
   mysql_close mysql_
@@ -619,6 +627,9 @@ foreign import ccall unsafe mysql_real_connect
 
 foreign import ccall unsafe mysql_close
     :: Ptr MYSQL -> IO ()
+
+foreign import ccall unsafe mysql_info
+    :: Ptr MYSQL -> IO CString
 
 foreign import ccall unsafe mysql_stmt_init
     :: Ptr MYSQL -> IO (Ptr MYSQL_STMT)
