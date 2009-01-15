@@ -8,7 +8,7 @@ License:          LGPL
 License-file:     COPYING
 Author:           Chris Waterson
 Maintainer:       waterson@maubi.net
-Build-Depends:    base >= 3 && < 4, time, HDBC >= 1.1.0
+Build-Depends:    base >= 3 && < 4, bytestring, time, HDBC >= 1.1.0
 Exposed-modules:  Database.HDBC.MySQL
 Other-modules:    Database.HDBC.MySQL.Connection
 ghc-options:      -Wall -O

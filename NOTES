@@ -1,3 +1,6 @@
+This is probably worth considering to be "alpha"-level software.  It
+works, but there are some limitations that you should be aware of.
+
 Caveats:
 
   * This works with 5.0.75.  I haven't tried with 4.x nor 5.1.  I
@@ -21,6 +24,15 @@ Caveats:
     discover what the default table type is, and say "no" if it's not
     a table type that supports transactions, but... meh.
 
+  * I'm not sure that I can tell the difference between a MySQL TEXT
+    and a MySQL BLOB column.  If you ask about the metadata of either,
+    I'll tell you it's a SqlBinaryT.
+
+  * I have not tested this with non-ASCII data.  I don't pay any
+    attention to the connection character set.  I use withCString,
+    which doesn't pay any attention, either.  Things may just work if
+    you use UTF-8.
+
 Things to do:
 
   * The statement and table metadata could stand to be improved a bit.
@@ -39,7 +51,8 @@ Things to do:
     to play with the statement.
 
   * Verify that embedded null characters on bound parameter strings
-    work correctly.
+    work correctly.  I'm using "withCString", when I probably should
+    be using "withCStringLen".
 
 There's a little test program that runs a query and spews out the
 results.  To compile it,
