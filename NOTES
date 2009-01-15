@@ -3,17 +3,18 @@ works, but there are some limitations that you should be aware of.
 
 Caveats:
 
-  * This works with 5.0.75.  I haven't tried with 4.x nor 5.1.  I
-    suspect that less than 4.1 won't work, due to lack of support for
+  * This works with MySQL server and client libraries 5.0.75.  I
+    haven't tried with 4.x nor 5.1.  I suspect that using a server
+    version less than 4.1 won't work, due to lack of support for
     prepared statements.
 
-  * MySQL DATETIME and TIMESTAMP columns have no timezone information,
-    because MySQL r00lz.  So, I'm just converting them blindly to
-    SqlEpochTime values, which presumes UTC.  This is all fine if
-    you're actually running your server in UTC, but it will probably
-    be confusing if you're not.  It might be possible to interpret the
-    times using the current connection's default timezone setting,
-    instead.  Is that better?  Or worse?
+  * MySQL DATETIME and TIMESTAMP columns have no time zone information,
+    because they just don't.  So, I'm just converting them blindly to
+    SqlEpochTime values, and assuming the times are UTC.  This is all
+    fine if you're actually running your server in UTC, but it will
+    probably be confusing if you're not.  It might be possible to
+    interpret the times using the current connection's default
+    time zone setting, instead.  Is that better?  Or worse?
 
   * Out of the box, MySQL probably uses MyISAM tables to store its
     data, and MyISAM tables don't support transactions.  Yet, I'm
@@ -30,8 +31,9 @@ Caveats:
 
   * I have not tested this with non-ASCII data.  I don't pay any
     attention to the connection character set.  I use withCString,
-    which doesn't pay any attention, either.  Things may just work if
-    you use UTF-8.
+    which doesn't pay any attention, either.  It may be that this
+    total lack of attention results in things serendipitously working
+    if the MySQL connection defaults to using UTF-8 as the encoding.
 
 Things to do:
 
@@ -67,4 +69,4 @@ now:
   ghc --make -package base-3.0.3.0 -package HUnit -package HDBC -Wall -i../dist/build -i.. -L/opt/local/lib/mysql5/mysql -lmysqlclient -o runtests runtests.hs
 
 One issue is that I want the location of the MySQL library to come
-from autoconf, rather than be hard-coded.
+from the configuration data, rather than be hard-coded.
