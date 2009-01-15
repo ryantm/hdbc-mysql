@@ -2,7 +2,7 @@
 {-# OPTIONS -fglasgow-exts #-}
 
 module Database.HDBC.MySQL.Connection
-    (connectMySQL, Connection())
+    (connectMySQL, MySQLConnectInfo(..), defaultMySQLConnectInfo)
 where
 
 import Control.Exception
@@ -20,6 +20,25 @@ import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
 
 #include <mysql.h>
+
+{- | Connection information to use with connectMySQL. -}
+data MySQLConnectInfo = MySQLConnectInfo
+    { mysqlHost       :: String
+    , mysqlUser       :: String
+    , mysqlPassword   :: String
+    , mysqlDatabase   :: String
+    , mysqlPort       :: Int
+    , mysqlUnixSocket :: String
+    }
+
+{- | Typical connection information, meant to be overridden partially.
+
+This connects to host 127.0.0.1 on port 3306 as the "root" user with
+no password, and defaults to the "test" database.
+
+-}
+defaultMySQLConnectInfo :: MySQLConnectInfo
+defaultMySQLConnectInfo = MySQLConnectInfo "127.0.0.1" "root" "" "test" 3306 ""
 
 data Connection = Connection
     { disconnect :: IO ()
@@ -58,17 +77,19 @@ instance Types.IConnection Connection where
 -- struct.  We don't ever need to look inside it.
 data MYSQL
 
--- Connects to the MySQL database.
-connectMySQL :: String -> String -> String -> String -> Int -> String -> IO Connection
-connectMySQL host user passwd db port unixSocket = do
+{- | Connects to a MySQL database. -}
+connectMySQL :: MySQLConnectInfo -> IO Connection
+connectMySQL info = do
   mysql_ <- mysql_init nullPtr
   when (mysql_ == nullPtr) (error "mysql_init failed")
-  withCString host $ \host_ ->
-      withCString user $ \user_ ->
-          withCString passwd $ \passwd_ ->
-              withCString db $ \db_ ->
-                  withCString unixSocket $ \unixSocket_ ->
-                      do rv <- mysql_real_connect mysql_ host_ user_ passwd_ db_ (fromIntegral port) unixSocket_
+  withCString (mysqlHost info) $ \host_ ->
+      withCString (mysqlUser info) $ \user_ ->
+          withCString (mysqlPassword info) $ \passwd_ ->
+              withCString (mysqlDatabase info) $ \db_ ->
+                  withCString (mysqlUnixSocket info) $ \unixSocket_ ->
+                      do rv <- mysql_real_connect mysql_ host_ user_ passwd_ db_
+                                                  (fromIntegral $ mysqlPort info)
+                                                  unixSocket_
                          when (rv == nullPtr) (connectionError mysql_)
                          wrap mysql_
     where
@@ -94,7 +115,7 @@ connectMySQL host user passwd db port unixSocket = do
                    , rollback             = doRollback mysql_ >> doStartTransaction mysql_
                    , run                  = doRun mysql_ stmtref
                    , prepare              = newStatement mysql_ stmtref
-                   , clone                = connectMySQL host user passwd db port unixSocket
+                   , clone                = connectMySQL info
                    , hdbcDriverName       = "mysql"
                    , hdbcClientVer        = clientver
                    , proxiedClientName    = "mysql"
@@ -510,6 +531,8 @@ nonNullCellValue #{const MYSQL_TYPE_TIME} p _ = do
 
 nonNullCellValue t _ _ = return $ Types.SqlString ("unknown type " ++ show t)
 
+-- Cough up the column metadata for a field that's returned from a
+-- query.
 sqlColDescOf :: MYSQL_FIELD -> (String, ColTypes.SqlColDesc)
 sqlColDescOf f =
     let typ      = typeIdOf (fieldType f)
@@ -519,6 +542,9 @@ sqlColDescOf f =
         nullable = Just $ (fieldFlags f .&. #{const NOT_NULL_FLAG}) == 0
     in (fieldName f, ColTypes.SqlColDesc typ sz octlen digits nullable)
 
+-- Returns the HDBC column type appropriate for the MySQL column
+-- type. (XXX as far as I can tell, I can't tell the difference
+-- between a TEXT and a BLOB column, here.)
 typeIdOf :: CInt -> ColTypes.SqlTypeId
 typeIdOf #{const MYSQL_TYPE_DECIMAL}     = ColTypes.SqlDecimalT
 typeIdOf #{const MYSQL_TYPE_TINY}        = ColTypes.SqlTinyIntT
@@ -549,11 +575,15 @@ typeIdOf #{const MYSQL_TYPE_STRING}      = ColTypes.SqlCharT
 typeIdOf #{const MYSQL_TYPE_GEOMETRY}    = ColTypes.SqlUnknownT "GEOMETRY"
 typeIdOf n                               = ColTypes.SqlUnknownT ("unknown type " ++ show n)
 
+-- Run a query and discard the results, if any.
 doRun :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> [Types.SqlValue] -> IO Integer
 doRun mysql_ stmtref query params = do
   stmt <- newStatement mysql_ stmtref query
   Types.execute stmt params
 
+-- Issue a query "old school", without using the prepared statement
+-- API.  We use this internally to send the transaction-related
+-- statements, because -- it turns out -- we have to!
 doQuery :: String -> Ptr MYSQL -> IO ()
 doQuery stmt mysql_ =
     withCString stmt $ \stmt_ -> do
@@ -569,6 +599,8 @@ doRollback = doQuery "ROLLBACK"
 doStartTransaction :: Ptr MYSQL -> IO ()
 doStartTransaction = doQuery "START TRANSACTION"
 
+-- Retrieve all the tables in the current database by issuing a "SHOW
+-- TABLES" statement.
 doGetTables :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO [String]
 doGetTables mysql_ stmtref = do
   stmt <- newStatement mysql_ stmtref "SHOW TABLES"
@@ -579,6 +611,10 @@ doGetTables mysql_ stmtref = do
             fromSql (Types.SqlString s) = s
             fromSql _                   = error "SHOW TABLES returned a table whose name wasn't a string"
 
+-- Describe a single table in the database by issuing a "DESCRIBE"
+-- statement and parsing the results.  (XXX this is sloppy right now;
+-- ideally you'd come up with exactly the same results as if you did a
+-- describeResult on SELECT * FROM table.)
 doDescribeTable :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> IO [(String, ColTypes.SqlColDesc)]
 doDescribeTable mysql_ stmtref table = do
   stmt <- newStatement mysql_ stmtref ("DESCRIBE " ++ table)
@@ -595,7 +631,7 @@ doDescribeTable mysql_ stmtref table = do
 
             fromRow _ = throwDyn $ Types.SqlError "" 0 "DESCRIBE failed"
 
--- XXX this is incomplete, I know.
+-- XXX this is likely to be incomplete.
 typeIdOfString :: String -> ColTypes.SqlTypeId
 typeIdOfString s
     | "int"       `isPrefixOf` s = ColTypes.SqlIntegerT
@@ -615,6 +651,8 @@ typeIdOfString s
     | "time"      `isPrefixOf` s = ColTypes.SqlTimeT
     | otherwise                  = ColTypes.SqlUnknownT s
 
+-- A helper function that turns an executed statement into the
+-- resulting rows.
 unfoldRows :: Types.Statement -> IO [[Types.SqlValue]]
 unfoldRows stmt = do
   row <- Types.fetchRow stmt
@@ -623,6 +661,8 @@ unfoldRows stmt = do
     Just (vals) -> do rows <- unfoldRows stmt
                       return (vals : rows)
 
+-- Finalizes all the open statements related to the connection, and
+-- closes the connection.
 disconnectMySQL :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO ()
 disconnectMySQL mysql_ stmtref = do
   withMVar stmtref $ mapM_ finalize
