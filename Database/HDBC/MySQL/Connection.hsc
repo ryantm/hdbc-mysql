@@ -7,15 +7,13 @@ where
 
 import Control.Exception
 import Control.Monad
-import Control.Concurrent.MVar
 import Foreign
 import Foreign.C
 import qualified Data.ByteString as B
+import Data.IORef
 import Data.List (isPrefixOf)
-import Data.Maybe (isJust)
 import Data.Time
 import Data.Time.Clock.POSIX
-import System.Mem.Weak
 
 import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
@@ -105,17 +103,16 @@ connectMySQL info = do
         -- HDBC assumes that there is no such thing as auto-commit.
         -- So we'll turn it off here and start our first transaction.
         mysql_autocommit mysql_ 0
-        doStartTransaction mysql_
 
-        stmtref <- newMVar []
-        connWeakPtr <- mkWeakPtr mysql_ (Just $ disconnectMySQL mysql_ stmtref)
+        mysql__ <- newForeignPtr mysql_close mysql_
+        doStartTransaction mysql__
 
         return $ Connection
-                   { disconnect           = finalize connWeakPtr
-                   , commit               = doCommit mysql_ >> doStartTransaction mysql_
-                   , rollback             = doRollback mysql_ >> doStartTransaction mysql_
-                   , run                  = doRun mysql_ stmtref
-                   , prepare              = newStatement mysql_ stmtref
+                   { disconnect           = finalizeForeignPtr mysql__
+                   , commit               = doCommit mysql__ >> doStartTransaction mysql__
+                   , rollback             = doRollback mysql__ >> doStartTransaction mysql__
+                   , run                  = doRun mysql__
+                   , prepare              = newStatement mysql__
                    , clone                = connectMySQL info
                    , hdbcDriverName       = "mysql"
                    , hdbcClientVer        = clientver
@@ -123,15 +120,12 @@ connectMySQL info = do
                    , proxiedClientVer     = show protover
                    , dbServerVer          = serverver
                    , dbTransactionSupport = True
-                   , getTables            = doGetTables mysql_ stmtref
-                   , describeTable        = doDescribeTable mysql_ stmtref
+                   , getTables            = doGetTables mysql__
+                   , describeTable        = doDescribeTable mysql__
                    }
 
 -- A MySQL statement: wraps mysql.h's MYSQL_STMT struct.
 data MYSQL_STMT
-
-type WeakPtrStmt = Weak (Ptr MYSQL_STMT)
-
 
 -- A MySQL result: wraps mysql.h's MYSQL_RES struct.
 data MYSQL_RES
@@ -228,17 +222,14 @@ instance Storable MYSQL_TIME where
       (#poke MYSQL_TIME, second) p (timeSecond t)
 
 -- Prepares a new Statement for execution.
-newStatement :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> IO Types.Statement
-newStatement mysql_ stmtref query = do
+newStatement :: ForeignPtr MYSQL -> String -> IO Types.Statement
+newStatement mysql__ query = withForeignPtr mysql__ $ \mysql_ -> do
   stmt_ <- mysql_stmt_init mysql_
   when (stmt_ == nullPtr) (connectionError mysql_)
 
-  -- Add a finalizer that closes the statement.  This ensures that the
-  -- statement will be closed exactly once, either when "finish" is
-  -- called or when it's garbage collected.  Also, if anything below
-  -- blows up, then the finalizer will to get run on the statement
-  -- object eventually and clean up the native structure.
-  stmtWeakPtr <- mkWeakPtr stmt_ (Just $ mysql_stmt_close stmt_ >> return ())
+  -- If an error occurs below, we'll lose the reference to the foreign
+  -- pointer and run the finalizer.
+  stmt__ <- newForeignPtr mysql_stmt_close stmt_
 
   withCStringLen query $ \(query_, len) -> do
       rv <- mysql_stmt_prepare stmt_ query_ (fromIntegral len)
@@ -258,32 +249,40 @@ newStatement mysql_ stmtref query = do
           rv' <- mysql_stmt_bind_result stmt_ bind_
           when (rv' /= 0) (statementError stmt_))
 
-  -- Add a weak reference to the statement to connection's set of
-  -- active statements, while pruning out any statements that have
-  -- already gone away.
-  withMVar stmtref $ \stmts -> do
-    stmts' <- filterM alive stmts
-    return $ stmtWeakPtr:stmts'
+  -- This is mildly insane.  Create an IORef where we can store the
+  -- finalizer, so we can later free the finalizer.
+  gptr <- newIORef nullFunPtr
+  g <- makeFinalizer $ freeBinds results gptr
+  writeIORef gptr g
+  addForeignPtrFinalizer g stmt__
 
-  -- XXX Cheesy!  We'll pass the mysql_ pointer to execute (which
-  -- doesn't need it, but maybe some day could make use of it) simply
-  -- to entrain the connection while the statement is still around,
-  -- ensuring that we don't collect the former until nobody references
-  -- the latter.
+  -- We pass the connection ForeignPtr down to execute and fetchRow as
+  -- a silly way to keep a reference to it alive so long as the
+  -- statement is around.
   return $ Types.Statement
-             { Types.execute        = execute mysql_ stmt_
-             , Types.executeMany    = mapM_ $ execute mysql_ stmt_
-             , Types.finish         = finalize stmtWeakPtr
-             , Types.fetchRow       = fetchRow stmt_ results
+             { Types.execute        = execute mysql__ stmt__
+             , Types.executeMany    = mapM_ $ execute mysql__ stmt__
+             , Types.finish         = finalizeForeignPtr stmt__
+             , Types.fetchRow       = fetchRow mysql__ stmt__ results
              , Types.originalQuery  = query
              , Types.getColumnNames = return $ map fieldName fields
              , Types.describeResult = return $ map sqlColDescOf fields
              }
 
-    where alive :: WeakPtrStmt -> IO Bool
-          alive ptr = do
-            s <- deRefWeak ptr
-            return $ isJust s
+type Finalizer a = Ptr a -> IO ()
+foreign import ccall "wrapper" makeFinalizer
+    :: Finalizer a -> IO (FunPtr (Finalizer a))
+
+-- Release the storage allocated for each bind.
+freeBinds :: [MYSQL_BIND] -> IORef (FunPtr (Finalizer a)) -> Ptr MYSQL_STMT -> IO ()
+freeBinds binds selfPtrRef _ = do
+  readIORef selfPtrRef >>= freeHaskellFunPtr
+  mapM_ freeOneBind binds
+    where freeOneBind bind = do
+            free $ bindLength bind
+            free $ bindIsNull bind
+            free $ bindBuffer bind
+            free $ bindError bind
 
 -- Returns the list of fields from a prepared statement.
 fieldsOf :: Ptr MYSQL_STMT -> IO [MYSQL_FIELD]
@@ -304,20 +303,19 @@ fieldsOfResult res_ = do
     else liftM2 (:) (peek field_) (fieldsOfResult res_)
 
 -- Executes a statement with the specified binding parameters.
-execute :: Ptr MYSQL -> Ptr MYSQL_STMT -> [Types.SqlValue] -> IO Integer
-execute mysql_ stmt_ params = do
-  bindParams stmt_ params
-  rv <- mysql_stmt_execute stmt_
-  when (rv /= 0) (statementError stmt_)
-  nrows <- mysql_stmt_affected_rows stmt_
+execute :: ForeignPtr MYSQL -> ForeignPtr MYSQL_STMT -> [Types.SqlValue] -> IO Integer
+execute mysql__ stmt__ params =
+    withForeignPtr mysql__ $ \_ ->
+        withForeignPtr stmt__ $ \stmt_ -> do
+          bindParams stmt_ params
+          rv <- mysql_stmt_execute stmt_
+          when (rv /= 0) (statementError stmt_)
+          nrows <- mysql_stmt_affected_rows stmt_
 
-  -- Use the mysql_ parameter in a way that it can't get optimized
-  -- away.
-  mysql_info mysql_
-
-  -- mysql_stmt_affected_rows returns -1 when called on a SELECT
-  -- statement; the HDBC API expects zero to be returned in this case.
-  return $ fromIntegral (if nrows == (-1 :: CULLong) then 0 else nrows)
+          -- mysql_stmt_affected_rows returns -1 when called on a
+          -- SELECT statement; the HDBC API expects zero to be
+          -- returned in this case.
+          return $ fromIntegral (if nrows == (-1 :: CULLong) then 0 else nrows)
 
 -- Binds placeholder parameters to values.
 bindParams :: Ptr MYSQL_STMT -> [Types.SqlValue] -> IO ()
@@ -432,17 +430,17 @@ resultOfField field =
     let ftype = fieldType field
         btype = boundType ftype (fieldDecimals field)
         size  = boundSize btype (fieldLength field) in
-    with size $ \size_ ->
-        with (0 :: CChar) $ \isNull_ ->
-            with (0 :: CChar) $ \error_ ->
-                allocaBytes (fromIntegral size) $ \buffer_ ->
-                    return $ MYSQL_BIND { bindLength       = size_
-                                        , bindIsNull       = isNull_
-                                        , bindBuffer       = buffer_
-                                        , bindError        = error_
-                                        , bindBufferType   = btype
-                                        , bindBufferLength = size
-                                        }
+    do size_   <- new size
+       isNull_ <- new (0 :: CChar)
+       error_  <- new (0 :: CChar)
+       buffer_ <- mallocBytes (fromIntegral size)
+       return $ MYSQL_BIND { bindLength       = size_
+                           , bindIsNull       = isNull_
+                           , bindBuffer       = buffer_
+                           , bindError        = error_
+                           , bindBufferType   = btype
+                           , bindBufferLength = size
+                           }
 
 -- Returns the appropriate result type for a particular host type.
 boundType :: CInt -> CUInt -> CInt
@@ -472,14 +470,16 @@ boundSize _                          n = n
 
 -- Fetches a row from an executed statement and converts the cell
 -- values into a list of SqlValue types.
-fetchRow :: Ptr MYSQL_STMT -> [MYSQL_BIND] -> IO (Maybe [Types.SqlValue])
-fetchRow stmt_ results = do
-  rv <- mysql_stmt_fetch stmt_
-  case rv of
-    0                             -> row
-    #{const MYSQL_DATA_TRUNCATED} -> row
-    #{const MYSQL_NO_DATA}        -> return Nothing
-    _                             -> statementError stmt_
+fetchRow :: ForeignPtr MYSQL -> ForeignPtr MYSQL_STMT -> [MYSQL_BIND] -> IO (Maybe [Types.SqlValue])
+fetchRow mysql__ stmt__ results =
+    withForeignPtr mysql__ $ \_ ->
+        withForeignPtr stmt__ $ \stmt_ -> do
+          rv <- mysql_stmt_fetch stmt_
+          case rv of
+            0                             -> row
+            #{const MYSQL_DATA_TRUNCATED} -> row
+            #{const MYSQL_NO_DATA}        -> return Nothing
+            _                             -> statementError stmt_
     where row = mapM cellValue results >>= \cells -> return $ Just cells
 
 -- Produces a single SqlValue cell value given the binding, handling
@@ -577,34 +577,34 @@ typeIdOf #{const MYSQL_TYPE_GEOMETRY}    = ColTypes.SqlUnknownT "GEOMETRY"
 typeIdOf n                               = ColTypes.SqlUnknownT ("unknown type " ++ show n)
 
 -- Run a query and discard the results, if any.
-doRun :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> [Types.SqlValue] -> IO Integer
-doRun mysql_ stmtref query params = do
-  stmt <- newStatement mysql_ stmtref query
+doRun :: ForeignPtr MYSQL -> String -> [Types.SqlValue] -> IO Integer
+doRun mysql__ query params = do
+  stmt <- newStatement mysql__ query
   Types.execute stmt params
 
 -- Issue a query "old school", without using the prepared statement
 -- API.  We use this internally to send the transaction-related
 -- statements, because -- it turns out -- we have to!
-doQuery :: String -> Ptr MYSQL -> IO ()
-doQuery stmt mysql_ =
+doQuery :: String -> ForeignPtr MYSQL -> IO ()
+doQuery stmt mysql__ = withForeignPtr mysql__ $ \mysql_ -> do
     withCString stmt $ \stmt_ -> do
       rv <- mysql_query mysql_ stmt_
       when (rv /= 0) (connectionError mysql_)
 
-doCommit :: Ptr MYSQL -> IO ()
+doCommit :: ForeignPtr MYSQL -> IO ()
 doCommit = doQuery "COMMIT"
   
-doRollback :: Ptr MYSQL -> IO ()
+doRollback :: ForeignPtr MYSQL -> IO ()
 doRollback = doQuery "ROLLBACK"
 
-doStartTransaction :: Ptr MYSQL -> IO ()
+doStartTransaction :: ForeignPtr MYSQL -> IO ()
 doStartTransaction = doQuery "START TRANSACTION"
 
 -- Retrieve all the tables in the current database by issuing a "SHOW
 -- TABLES" statement.
-doGetTables :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO [String]
-doGetTables mysql_ stmtref = do
-  stmt <- newStatement mysql_ stmtref "SHOW TABLES"
+doGetTables :: ForeignPtr MYSQL -> IO [String]
+doGetTables mysql__ = do
+  stmt <- newStatement mysql__ "SHOW TABLES"
   Types.execute stmt []
   rows <- unfoldRows stmt
   return $ map (fromSql . head) rows
@@ -616,9 +616,9 @@ doGetTables mysql_ stmtref = do
 -- statement and parsing the results.  (XXX this is sloppy right now;
 -- ideally you'd come up with exactly the same results as if you did a
 -- describeResult on SELECT * FROM table.)
-doDescribeTable :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> IO [(String, ColTypes.SqlColDesc)]
-doDescribeTable mysql_ stmtref table = do
-  stmt <- newStatement mysql_ stmtref ("DESCRIBE " ++ table)
+doDescribeTable :: ForeignPtr MYSQL -> String -> IO [(String, ColTypes.SqlColDesc)]
+doDescribeTable mysql__ table = do
+  stmt <- newStatement mysql__ ("DESCRIBE " ++ table)
   Types.execute stmt []
   rows <- unfoldRows stmt
   return $ map fromRow rows
@@ -662,13 +662,6 @@ unfoldRows stmt = do
     Just (vals) -> do rows <- unfoldRows stmt
                       return (vals : rows)
 
--- Finalizes all the open statements related to the connection, and
--- closes the connection.
-disconnectMySQL :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO ()
-disconnectMySQL mysql_ stmtref = do
-  withMVar stmtref $ mapM_ finalize
-  mysql_close mysql_
-
 -- Returns the last statement-level error.
 statementError :: Ptr MYSQL_STMT -> IO a
 statementError stmt_ = do
@@ -710,11 +703,8 @@ foreign import ccall unsafe mysql_real_connect
  -> CString   -- unix socket
  -> IO (Ptr MYSQL)
 
-foreign import ccall unsafe mysql_close
-    :: Ptr MYSQL -> IO ()
-
-foreign import ccall unsafe mysql_info
-    :: Ptr MYSQL -> IO CString
+foreign import ccall unsafe "&mysql_close" mysql_close
+    :: FunPtr (Ptr MYSQL -> IO ())
 
 foreign import ccall unsafe mysql_stmt_init
     :: Ptr MYSQL -> IO (Ptr MYSQL_STMT)
@@ -749,8 +739,8 @@ foreign import ccall unsafe mysql_fetch_field
 foreign import ccall unsafe mysql_stmt_fetch
     :: Ptr MYSQL_STMT -> IO CInt
 
-foreign import ccall unsafe mysql_stmt_close
-    :: Ptr MYSQL_STMT -> IO CChar
+foreign import ccall unsafe "&mysql_stmt_close" mysql_stmt_close
+    :: FunPtr (Ptr MYSQL_STMT -> IO ())
 
 foreign import ccall unsafe mysql_stmt_errno
     :: Ptr MYSQL_STMT -> IO CInt
