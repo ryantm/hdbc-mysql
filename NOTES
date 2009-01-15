@@ -1,12 +1,10 @@
-This works with 5.0.75.  I haven't tried with 4.x nor 5.1.  I suspect
-the former won't work, but the latter probably will.
+Caveats:
+
+  * This works with 5.0.75.  I haven't tried with 4.x nor 5.1.  I
+    suspect that less than 4.1 won't work, due to lack of support for
+    prepared statements.
 
 Things to do:
-
-  * Figure out how to do stuff on Windows.  From John, "autoconf is
-    not portable to Windows.  I briefly had applied a patch from
-    someone to add it to HDBC-PostgreSQL, but will remove it since I
-    realized this."
 
   * All the parameters that you need to create a connection is a bit
     nasty.  I could go parse a JDBC-like string, but, ...

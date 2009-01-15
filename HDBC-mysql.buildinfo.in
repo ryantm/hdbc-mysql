@@ -1,2 +1,0 @@
-include-dirs: @MYSQLINCDIR@
-ld-options: @MYSQLLDOPTS@
