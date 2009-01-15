@@ -10,6 +10,7 @@ import Control.Monad
 import Control.Concurrent.MVar
 import Foreign
 import Foreign.C
+import qualified Data.ByteString as B
 import Data.List (isPrefixOf)
 import Data.Maybe (isJust)
 import Data.Time
@@ -355,8 +356,8 @@ bindOfSqlValue (Types.SqlString s) =
     -- XXX this might not handle embedded null characters correctly.
     bindOfSqlValue' (length s) (withCString s) #{const MYSQL_TYPE_VAR_STRING}
 
-bindOfSqlValue (Types.SqlByteString _) =
-    error "bindOfSqlValue :: SqlByteString"
+bindOfSqlValue (Types.SqlByteString s) =
+    bindOfSqlValue' (B.length s) (B.useAsCString s) #{const MYSQL_TYPE_VAR_STRING}
 
 bindOfSqlValue (Types.SqlInteger n) =
     bindOfSqlValue' (8::Int) (with (fromIntegral n :: CLLong)) #{const MYSQL_TYPE_LONGLONG}
