@@ -18,7 +18,7 @@ main = defaultMainWithHooks simpleUserHooks {
   hookedPrograms = [mysqlConfigProgram],
 
   confHook = \pkg flags -> do
-    lbi <- confHook defaultUserHooks pkg flags
+    lbi <- confHook simpleUserHooks pkg flags
     bi  <- mysqlBuildInfo lbi
     return lbi {
       localPkgDescr = updatePackageDescription
