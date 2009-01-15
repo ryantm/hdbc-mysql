@@ -1,7 +1,28 @@
-This is probably worth considering to be "alpha"-level software.  It
-works, but there are some limitations that you should be aware of.
+HDBC-mysql
+==========
 
-Caveats:
+This is a "native" HDBC driver for MySQL that makes use of
+libmysqlclient to communicate with a MySQL server.  By way of
+synopsis:
+
+  import Control.Monad
+  import Database.HDBC
+  import Database.HDBC.MySQL
+  main = do conn <- connectMySQL defaultMySQLConnectInfo {
+                         mysqlHost     = "db1.example.com",
+                         mysqlUser     = "scott",
+                         mysqlPassword = "tiger"
+                      }
+
+            rows <- quickQuery' conn "SELECT 1 + 1" []
+            forM_ rows $ \row -> putStrLn $ show row
+
+At the moment, please consider this to be "alpha" software.  As far as
+I can tell, it works.  There are some limitations that you should be
+aware of.
+
+Caveats
+=======
 
   * This works with MySQL server and client libraries 5.0.75.  I
     haven't tried with 4.x nor 5.1.  I suspect that using a server
@@ -35,14 +56,12 @@ Caveats:
     total lack of attention results in things serendipitously working
     if the MySQL connection defaults to using UTF-8 as the encoding.
 
-Things to do:
-
   * The statement and table metadata could stand to be improved a bit.
     In particular, it would be nice if "describeTable foo" and
     "describeResults" on "SELECT * FROM foo" returned the same thing.
     (They're sorta close, I guess...)
 
-  * Thread-safety could be an issue here.  In my code, there's
+  * Thread-safety could be an issue.  In the driver code, there's
     definitely a race condition between "prepare" and "disconnect",
     for example.  I haven't even *looked* at thread-safety issues for
     the MySQL driver.  I'm not sure if I should worry about it, or if
@@ -52,9 +71,15 @@ Things to do:
     statement, explicitly disconnects the connection, and then tries
     to play with the statement.
 
-  * Verify that embedded null characters on bound parameter strings
-    work correctly.  I'm using "withCString", when I probably should
-    be using "withCStringLen".
+  * I need to verify that embedded null characters on bound parameter
+    strings work correctly.  I'm using "withCString", when I probably
+    should be using "withCStringLen".
+
+  * It probably makes sense to marshall to the SqlByteString type when
+    retrieving BLOB data.
+
+Testing
+=======
 
 There's a little test program that runs a query and spews out the
 results.  To compile it,
