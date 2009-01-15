@@ -18,9 +18,7 @@ alrows :: [[(String, SqlValue)]]
 alrows = map (zip colnames) rowdata
 
 setup f = dbTestCase $ \dbh ->
-   do run dbh "DROP TABLE IF EXISTS hdbctest2" []
-      commit dbh
-      run dbh "CREATE TABLE hdbctest2 (testid INTEGER PRIMARY KEY NOT NULL, teststring TEXT, testint INTEGER)" []
+   do run dbh "CREATE TABLE hdbctest2 (testid INTEGER PRIMARY KEY NOT NULL, teststring TEXT, testint INTEGER)" []
       sth <- prepare dbh "INSERT INTO hdbctest2 VALUES (?, ?, ?)"
       executeMany sth rowdata
       commit dbh

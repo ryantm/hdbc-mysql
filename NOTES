@@ -3,8 +3,6 @@ the former won't work, but the latter probably will.
 
 Things to do:
 
-  * Figure out why I have to DROP TABLE IF EXISTS.
-
   * Figure out how to do stuff on Windows.  From John, "autoconf is
     not portable to Windows.  I briefly had applied a patch from
     someone to add it to HDBC-PostgreSQL, but will remove it since I
