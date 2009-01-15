@@ -10,6 +10,7 @@ import Control.Monad
 import Control.Concurrent.MVar
 import Foreign
 import Foreign.C
+import Data.List (isPrefixOf)
 import Data.Maybe (isJust)
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -101,7 +102,7 @@ connectMySQL host user passwd db port unixSocket = do
                    , dbServerVer          = serverver
                    , dbTransactionSupport = True
                    , getTables            = doGetTables mysql_ stmtref
-                   , describeTable        = \_ -> return []
+                   , describeTable        = doDescribeTable mysql_ stmtref
                    }
 
 -- A MySQL statement: wraps mysql.h's MYSQL_STMT struct.
@@ -217,8 +218,8 @@ newStatement mysql_ stmtref query = do
   -- object eventually and clean up the native structure.
   stmtWeakPtr <- mkWeakPtr stmt_ (Just $ mysql_stmt_close stmt_ >> return ())
 
-  withCString query $ \query_ -> do
-      rv <- mysql_stmt_prepare stmt_ query_ (fromIntegral $ length query)
+  withCStringLen query $ \(query_, len) -> do
+      rv <- mysql_stmt_prepare stmt_ query_ (fromIntegral len)
       when (rv /= 0) (statementError stmt_)
 
   -- Collect the result fields of the statement; this will simply be
@@ -330,6 +331,7 @@ bindOfSqlValue Types.SqlNull =
                    }
 
 bindOfSqlValue (Types.SqlString s) =
+    -- XXX this might not handle embedded null characters correctly.
     bindOfSqlValue' (length s) (withCString s) #{const MYSQL_TYPE_VAR_STRING}
 
 bindOfSqlValue (Types.SqlByteString _) =
@@ -464,29 +466,34 @@ cellValue :: MYSQL_BIND -> IO Types.SqlValue
 cellValue bind = do
   isNull <- peek $ bindIsNull bind
   if isNull == 0
-    then nonNullCellValue (bindBufferType bind) (bindBuffer bind)
+    then cellValue'
     else return Types.SqlNull
+      where cellValue' = do
+                   len <- peek $ bindLength bind
+                   let buftype = bindBufferType bind
+                       buf     = bindBuffer bind
+                   nonNullCellValue buftype buf len
 
 -- Produces a single SqlValue from the binding's type and buffer
 -- pointer.
-nonNullCellValue :: CInt -> Ptr () -> IO Types.SqlValue
+nonNullCellValue :: CInt -> Ptr () -> CULong -> IO Types.SqlValue
 
-nonNullCellValue #{const MYSQL_TYPE_LONG} p = do
+nonNullCellValue #{const MYSQL_TYPE_LONG} p _ = do
   n :: CLong <- peek $ castPtr p
   return $ Types.SqlInteger (fromIntegral n)
 
-nonNullCellValue #{const MYSQL_TYPE_LONGLONG} p = do
+nonNullCellValue #{const MYSQL_TYPE_LONGLONG} p _ = do
   n :: CLLong <- peek $ castPtr p
   return $ Types.SqlInteger (fromIntegral n)
 
-nonNullCellValue #{const MYSQL_TYPE_DOUBLE} p = do
+nonNullCellValue #{const MYSQL_TYPE_DOUBLE} p _ = do
   n :: CDouble <- peek $ castPtr p
   return $ Types.SqlDouble (realToFrac n)
 
-nonNullCellValue #{const MYSQL_TYPE_VAR_STRING} p =
-    peekCString (castPtr p) >>= return . Types.SqlString
+nonNullCellValue #{const MYSQL_TYPE_VAR_STRING} p len =
+    peekCStringLen ((castPtr p), fromIntegral len) >>= return . Types.SqlString
 
-nonNullCellValue #{const MYSQL_TYPE_DATETIME} p = do
+nonNullCellValue #{const MYSQL_TYPE_DATETIME} p _ = do
   t :: MYSQL_TIME <- peek $ castPtr p
   let epoch = (floor . toRational . utcTimeToPOSIXSeconds . mysqlTimeToUTC) t
   return $ Types.SqlEpochTime epoch
@@ -496,16 +503,16 @@ nonNullCellValue #{const MYSQL_TYPE_DATETIME} p = do
                     time = s + mn * 60 + h * 3600
                 in UTCTime day (secondsToDiffTime $ fromIntegral time)
 
-nonNullCellValue #{const MYSQL_TYPE_TIME} p = do
+nonNullCellValue #{const MYSQL_TYPE_TIME} p _ = do
   (MYSQL_TIME _ _ _ h mn s) <- peek $ castPtr p
   let secs = 3600 * h + 60 * mn + s
   return $ Types.SqlTimeDiff (fromIntegral secs)
 
-nonNullCellValue t _ = return $ Types.SqlString ("unknown type " ++ show t)
+nonNullCellValue t _ _ = return $ Types.SqlString ("unknown type " ++ show t)
 
 sqlColDescOf :: MYSQL_FIELD -> (String, ColTypes.SqlColDesc)
 sqlColDescOf f =
-    let typ      = typeIdOf $ fieldType f
+    let typ      = typeIdOf (fieldType f)
         sz       = Just $ fromIntegral $ fieldLength f
         octlen   = Just $ fromIntegral $ fieldLength f
         digits   = Just $ fromIntegral $ fieldDecimals f
@@ -568,16 +575,53 @@ doGetTables mysql_ stmtref = do
   Types.execute stmt []
   rows <- unfoldRows stmt
   return $ map (fromSql . head) rows
-      where unfoldRows stmt = do
-              row <- Types.fetchRow stmt
-              case row of
-                Nothing     -> return []
-                Just (vals) -> do rows <- unfoldRows stmt
-                                  return (vals : rows)
-
-            fromSql :: Types.SqlValue -> String
+      where fromSql :: Types.SqlValue -> String
             fromSql (Types.SqlString s) = s
             fromSql _                   = error "SHOW TABLES returned a table whose name wasn't a string"
+
+doDescribeTable :: Ptr MYSQL -> MVar [WeakPtrStmt] -> String -> IO [(String, ColTypes.SqlColDesc)]
+doDescribeTable mysql_ stmtref table = do
+  stmt <- newStatement mysql_ stmtref ("DESCRIBE " ++ table)
+  Types.execute stmt []
+  rows <- unfoldRows stmt
+  return $ map fromRow rows
+      where fromRow :: [Types.SqlValue] -> (String, ColTypes.SqlColDesc)
+            fromRow ((Types.SqlString colname)
+                     :(Types.SqlString coltype)
+                     :(Types.SqlString nullAllowed):_) =
+                let sqlTypeId = typeIdOfString coltype
+                    nullable = Just $ nullAllowed == "YES"
+                in (colname, ColTypes.SqlColDesc sqlTypeId Nothing Nothing Nothing nullable)
+
+            fromRow _ = throwDyn $ Types.SqlError "" 0 "DESCRIBE failed"
+
+-- XXX this is incomplete, I know.
+typeIdOfString :: String -> ColTypes.SqlTypeId
+typeIdOfString s
+    | "int"       `isPrefixOf` s = ColTypes.SqlIntegerT
+    | "bigint"    `isPrefixOf` s = ColTypes.SqlIntegerT
+    | "smallint"  `isPrefixOf` s = ColTypes.SqlSmallIntT
+    | "mediumint" `isPrefixOf` s = ColTypes.SqlIntegerT
+    | "tinyint"   `isPrefixOf` s = ColTypes.SqlTinyIntT
+    | "decimal"   `isPrefixOf` s = ColTypes.SqlDecimalT
+    | "double"    `isPrefixOf` s = ColTypes.SqlDoubleT
+    | "float"     `isPrefixOf` s = ColTypes.SqlFloatT
+    | "char"      `isPrefixOf` s = ColTypes.SqlCharT
+    | "varchar"   `isPrefixOf` s = ColTypes.SqlVarCharT
+    | "text"      `isPrefixOf` s = ColTypes.SqlBinaryT
+    | "timestamp" `isPrefixOf` s = ColTypes.SqlTimestampT
+    | "datetime"  `isPrefixOf` s = ColTypes.SqlTimestampT
+    | "date"      `isPrefixOf` s = ColTypes.SqlDateT
+    | "time"      `isPrefixOf` s = ColTypes.SqlTimeT
+    | otherwise                  = ColTypes.SqlUnknownT s
+
+unfoldRows :: Types.Statement -> IO [[Types.SqlValue]]
+unfoldRows stmt = do
+  row <- Types.fetchRow stmt
+  case row of
+    Nothing     -> return []
+    Just (vals) -> do rows <- unfoldRows stmt
+                      return (vals : rows)
 
 disconnectMySQL :: Ptr MYSQL -> MVar [WeakPtrStmt] -> IO ()
 disconnectMySQL mysql_ stmtref = do

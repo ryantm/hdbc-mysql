@@ -5,11 +5,6 @@ Things to do:
 
   * Figure out why I have to DROP TABLE IF EXISTS.
 
-  * Double-check coverage for result bindings.
-
-  * Fill in various other missing holes (notably, table and statement
-    description).
-
   * Figure out how to do stuff on Windows.  From John, "autoconf is
     not portable to Windows.  I briefly had applied a patch from
     someone to add it to HDBC-PostgreSQL, but will remove it since I
@@ -23,6 +18,13 @@ Things to do:
     for example.  I haven't even *looked* at thread-safety issues for
     the MySQL driver.  I'm not sure if I should worry about it, or if
     we assume that's going to be dealt with at a higher level.
+
+  * We might crash if someone opens a connection, prepares a
+    statement, explicitly disconnects the connection, and then tries
+    to play with the statement.
+
+  * Verify that embedded null characters on bound parameter strings
+    work correctly.
 
 There's a little test program that runs a query and spews out the
 results.  To compile it,
