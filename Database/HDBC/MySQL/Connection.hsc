@@ -487,9 +487,7 @@ fetchRow mysql__ stmt__ results =
 cellValue :: MYSQL_BIND -> IO Types.SqlValue
 cellValue bind = do
   isNull <- peek $ bindIsNull bind
-  if isNull == 0
-    then cellValue'
-    else return Types.SqlNull
+  if isNull == 0 then cellValue' else return Types.SqlNull
       where cellValue' = do
                    len <- peek $ bindLength bind
                    let buftype = bindBufferType bind
@@ -497,7 +495,7 @@ cellValue bind = do
                    nonNullCellValue buftype buf len
 
 -- Produces a single SqlValue from the binding's type and buffer
--- pointer.
+-- pointer.  It assumes that the value is not null.
 nonNullCellValue :: CInt -> Ptr () -> CULong -> IO Types.SqlValue
 
 nonNullCellValue #{const MYSQL_TYPE_LONG} p _ = do
@@ -521,6 +519,8 @@ nonNullCellValue #{const MYSQL_TYPE_DATETIME} p _ = do
   return $ Types.SqlEpochTime epoch
       where mysqlTimeToUTC :: MYSQL_TIME -> UTCTime
             mysqlTimeToUTC (MYSQL_TIME y m d h mn s) =
+                -- XXX so, this is fine if the date we're getting back
+                -- is UTC.  If not, well, it's wrong.
                 let day = fromGregorian (fromIntegral y) (fromIntegral m) (fromIntegral d)
                     time = s + mn * 60 + h * 3600
                 in UTCTime day (secondsToDiffTime $ fromIntegral time)
@@ -627,6 +627,7 @@ doDescribeTable mysql__ table = do
                      :(Types.SqlString coltype)
                      :(Types.SqlString nullAllowed):_) =
                 let sqlTypeId = typeIdOfString coltype
+                    -- XXX parse the column width and decimals, too!
                     nullable = Just $ nullAllowed == "YES"
                 in (colname, ColTypes.SqlColDesc sqlTypeId Nothing Nothing Nothing nullable)
 
