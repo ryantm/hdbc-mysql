@@ -20,20 +20,35 @@ import Database.HDBC.ColTypes as ColTypes
 
 #include <mysql.h>
 
-{- | Connection information to use with connectMySQL. -}
+{- | Connection information to use with connectMySQL.
+
+     You must either supply a host and port, or the name of a Unix
+     socket.
+
+-}
 data MySQLConnectInfo = MySQLConnectInfo
-    { mysqlHost       :: String
+    { -- | e.g., @\"db1.example.com\"@
+      mysqlHost       :: String
+      -- | e.g., @\"scott\"@
     , mysqlUser       :: String
+      -- | e.g., @\"tiger\"@
     , mysqlPassword   :: String
+      -- | the \"default\" database name; e.g., @\"emp\"@
     , mysqlDatabase   :: String
+      -- | e.g., @3306@
     , mysqlPort       :: Int
+      -- | e.g., @\"\/var\/lib\/mysql.sock\"@
     , mysqlUnixSocket :: String
     }
 
-{- | Typical connection information, meant to be overridden partially.
+{- | Typical connection information, meant to be overridden partially,
+     for example:
 
-This connects to host 127.0.0.1 on port 3306 as the "root" user with
-no password, and defaults to the "test" database.
+     > connectMySQL defaultMySQLConnectInfo { mysqlHost = "db1" }
+
+     In particular, the default values are @\"127.0.0.1\"@ as the
+     host, @3306@ as the port, @\"root\"@ as the user, no password,
+     and @\"test\"@ as the default database.
 
 -}
 defaultMySQLConnectInfo :: MySQLConnectInfo
@@ -76,7 +91,8 @@ instance Types.IConnection Connection where
 -- struct.  We don't ever need to look inside it.
 data MYSQL
 
-{- | Connects to a MySQL database. -}
+{- | Connects to a MySQL database using the specified
+     connection information. -}
 connectMySQL :: MySQLConnectInfo -> IO Connection
 connectMySQL info = do
   mysql_ <- mysql_init nullPtr
@@ -412,7 +428,7 @@ bindOfSqlValue' :: (Integral a, Storable b) =>
 
 bindOfSqlValue' len buf btype =
     let buflen = fromIntegral len in
-    with (0 :: CChar) $ \isNull_ -> 
+    with (0 :: CChar) $ \isNull_ ->
         with buflen $ \len_ ->
             buf $ \buf_ ->
                 return $ MYSQL_BIND
@@ -593,7 +609,7 @@ doQuery stmt mysql__ = withForeignPtr mysql__ $ \mysql_ -> do
 
 doCommit :: ForeignPtr MYSQL -> IO ()
 doCommit = doQuery "COMMIT"
-  
+
 doRollback :: ForeignPtr MYSQL -> IO ()
 doRollback = doQuery "ROLLBACK"
 
@@ -667,7 +683,7 @@ unfoldRows stmt = do
 statementError :: Ptr MYSQL_STMT -> IO a
 statementError stmt_ = do
   errno <- mysql_stmt_errno stmt_
-  msg <- peekCString =<< mysql_stmt_error stmt_ 
+  msg <- peekCString =<< mysql_stmt_error stmt_
   throwDyn $ Types.SqlError "" (fromIntegral errno) msg
 
 -- Returns the last connection-level error.
