@@ -1,0 +1,8 @@
+2009-02-14  Chris Waterson  <waterson@maubi.net>
+
+	* HDBC-mysql-0.2 Fix binding width for dates: MySQL's length
+	indicates 19 characters (which is the length of the string), but
+	we need the full size of the MYSQL_TIME struct.  Leak connections
+	and statements until I can figure out how to keep the ForeignPtr's
+	alive.
+
