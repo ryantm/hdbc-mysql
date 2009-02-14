@@ -120,7 +120,11 @@ connectMySQL info = do
         -- So we'll turn it off here and start our first transaction.
         mysql_autocommit mysql_ 0
 
-        mysql__ <- newForeignPtr mysql_close mysql_
+        -- XXX force a leak here. I have yet to fathom why the
+        -- references below to mysql__ don't keep the foreignPtr
+        -- alive.
+        --mysql__ <- newForeignPtr mysql_close mysql_
+        mysql__ <- newForeignPtr_ mysql_
         doStartTransaction mysql__
 
         return $ Connection
@@ -245,7 +249,11 @@ newStatement mysql__ query = withForeignPtr mysql__ $ \mysql_ -> do
 
   -- If an error occurs below, we'll lose the reference to the foreign
   -- pointer and run the finalizer.
-  stmt__ <- newForeignPtr mysql_stmt_close stmt_
+
+  -- XXX force a leak here. I have yet to fathom why the references
+  -- below to stmt__ don't keep the foreignPtr alive.
+  --stmt__ <- newForeignPtr mysql_stmt_close stmt_
+  stmt__ <- newForeignPtr_ stmt_
 
   withCStringLen query $ \(query_, len) -> do
       rv <- mysql_stmt_prepare stmt_ query_ (fromIntegral len)
