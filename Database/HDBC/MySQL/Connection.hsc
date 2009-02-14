@@ -207,12 +207,12 @@ instance Storable MYSQL_BIND where
         (#poke MYSQL_BIND, buffer_length) p buflen
 
 data MYSQL_TIME = MYSQL_TIME
-    { timeYear       :: CInt
-    , timeMonth      :: CInt
-    , timeDay        :: CInt
-    , timeHour       :: CInt
-    , timeMinute     :: CInt
-    , timeSecond     :: CInt
+    { timeYear       :: CUInt
+    , timeMonth      :: CUInt
+    , timeDay        :: CUInt
+    , timeHour       :: CUInt
+    , timeMinute     :: CUInt
+    , timeSecond     :: CUInt
     }
 
 instance Storable MYSQL_TIME where
@@ -480,9 +480,10 @@ boundType t                              _ = t
 -- Returns the amount of storage required for a particular result
 -- type.
 boundSize :: CInt -> CULong -> CULong
-boundSize #{const MYSQL_TYPE_LONG}   _ = 4
-boundSize #{const MYSQL_TYPE_DOUBLE} _ = 8
-boundSize _                          n = n
+boundSize #{const MYSQL_TYPE_LONG}     _ = 4
+boundSize #{const MYSQL_TYPE_DOUBLE}   _ = 8
+boundSize #{const MYSQL_TYPE_DATETIME} _ = #{const sizeof(MYSQL_TIME)}
+boundSize _                            n = n
 
 -- Fetches a row from an executed statement and converts the cell
 -- values into a list of SqlValue types.
