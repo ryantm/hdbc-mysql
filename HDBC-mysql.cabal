@@ -1,7 +1,7 @@
 Name:             HDBC-mysql
 Category:         Database
 Synopsis:         MySQL driver for HDBC
-Version:          0.2
+Version:          0.3
 Description:      This package provides a MySQL driver for HDBC.
 Stability:        Experimental
 Maintainer:       Chris Waterson <waterson@maubi.net>
