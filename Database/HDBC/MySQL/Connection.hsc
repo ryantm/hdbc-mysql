@@ -489,8 +489,8 @@ boundSize _                            n = n
 -- values into a list of SqlValue types.
 fetchRow :: ForeignPtr MYSQL -> ForeignPtr MYSQL_STMT -> [MYSQL_BIND] -> IO (Maybe [Types.SqlValue])
 fetchRow mysql__ stmt__ results =
-    withForeignPtr mysql__ $ \_ ->
-        withForeignPtr stmt__ $ \stmt_ -> do
+  withForeignPtr mysql__ $ \_ ->
+      withForeignPtr stmt__ $ \stmt_ -> do
           rv <- mysql_stmt_fetch stmt_
           case rv of
             0                             -> row
