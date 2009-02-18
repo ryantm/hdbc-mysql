@@ -1,3 +1,10 @@
+2009-02-18  Chris Waterson  <waterson@pixazza.com>
+
+	* HDBC-mysql-0.3 Deal with some of the problems where statements
+	would mysteriously "close".  It turns out that only one statement
+	can be "active" on a connection at a time, and that closing an
+	inactive statement causes the current statement to close as well.
+
 2009-02-14  Chris Waterson  <waterson@maubi.net>
 
 	* HDBC-mysql-0.2 Fix binding width for dates: MySQL's length
