@@ -495,7 +495,7 @@ fetchRow mysql__ stmt__ results =
           case rv of
             0                             -> row
             #{const MYSQL_DATA_TRUNCATED} -> row
-            #{const MYSQL_NO_DATA}        -> return Nothing
+            #{const MYSQL_NO_DATA}        -> finalizeForeignPtr stmt__ >> return Nothing
             _                             -> statementError stmt_
     where row = mapM cellValue results >>= \cells -> return $ Just cells
 
@@ -597,7 +597,9 @@ typeIdOf n                               = ColTypes.SqlUnknownT ("unknown type "
 doRun :: ForeignPtr MYSQL -> String -> [Types.SqlValue] -> IO Integer
 doRun mysql__ query params = do
   stmt <- newStatement mysql__ query
-  Types.execute stmt params
+  rv <- Types.execute stmt params
+  Types.finish stmt
+  return rv
 
 -- Issue a query "old school", without using the prepared statement
 -- API.  We use this internally to send the transaction-related
@@ -624,6 +626,7 @@ doGetTables mysql__ = do
   stmt <- newStatement mysql__ "SHOW TABLES"
   Types.execute stmt []
   rows <- unfoldRows stmt
+  Types.finish stmt
   return $ map (fromSql . head) rows
       where fromSql :: Types.SqlValue -> String
             fromSql (Types.SqlString s) = s
@@ -638,6 +641,7 @@ doDescribeTable mysql__ table = do
   stmt <- newStatement mysql__ ("DESCRIBE " ++ table)
   Types.execute stmt []
   rows <- unfoldRows stmt
+  Types.finish stmt
   return $ map fromRow rows
       where fromRow :: [Types.SqlValue] -> (String, ColTypes.SqlColDesc)
             fromRow ((Types.SqlString colname)
