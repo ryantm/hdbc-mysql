@@ -1,4 +1,9 @@
-2009-02-18  Chris Waterson  <waterson@pixazza.com>
+2009-02-26  Chris Waterson  <waterson@maubi.net>
+
+	* HDBC-mysql-0.4. Fix incorrect binding size (should always be 4
+	bytes, not compiler's "long") for MYSQL_TYPE_LONG columns.
+
+2009-02-18  Chris Waterson  <waterson@maubi.net>
 
 	* HDBC-mysql-0.3 Deal with some of the problems where statements
 	would mysteriously "close".  It turns out that only one statement
