@@ -516,7 +516,7 @@ cellValue bind = do
 nonNullCellValue :: CInt -> Ptr () -> CULong -> IO Types.SqlValue
 
 nonNullCellValue #{const MYSQL_TYPE_LONG} p _ = do
-  n :: CLong <- peek $ castPtr p
+  n :: CInt <- peek $ castPtr p
   return $ Types.SqlInteger (fromIntegral n)
 
 nonNullCellValue #{const MYSQL_TYPE_LONGLONG} p _ = do
