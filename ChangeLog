@@ -1,3 +1,9 @@
+2009-03-02  Chris Waterson  <waterson@maubi.net>
+
+	* HDBC-mysql-0.5. Use "throwSqlError" instead of "throwDyn" so
+	that we get legible errors under ghc-6.10.  This also removes the
+	dependency on base 3.
+
 2009-02-26  Chris Waterson  <waterson@maubi.net>
 
 	* HDBC-mysql-0.4. Fix incorrect binding size (should always be 4
