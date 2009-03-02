@@ -17,6 +17,7 @@ import Data.Time.Clock.POSIX
 
 import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
+import Database.HDBC (throwSqlError)
 
 #include <mysql.h>
 
@@ -652,7 +653,7 @@ doDescribeTable mysql__ table = do
                     nullable = Just $ nullAllowed == "YES"
                 in (colname, ColTypes.SqlColDesc sqlTypeId Nothing Nothing Nothing nullable)
 
-            fromRow _ = throwDyn $ Types.SqlError "" 0 "DESCRIBE failed"
+            fromRow _ = error "DESCRIBE failed"
 
 -- XXX this is likely to be incomplete.
 typeIdOfString :: String -> ColTypes.SqlTypeId
@@ -689,14 +690,14 @@ statementError :: Ptr MYSQL_STMT -> IO a
 statementError stmt_ = do
   errno <- mysql_stmt_errno stmt_
   msg <- peekCString =<< mysql_stmt_error stmt_
-  throwDyn $ Types.SqlError "" (fromIntegral errno) msg
+  throwSqlError $ Types.SqlError "" (fromIntegral errno) msg
 
 -- Returns the last connection-level error.
 connectionError :: Ptr MYSQL -> IO a
 connectionError mysql_ = do
   errno <- mysql_errno mysql_
   msg <- peekCString =<< mysql_error mysql_
-  throwDyn $ Types.SqlError "" (fromIntegral errno) msg
+  throwSqlError $ Types.SqlError "" (fromIntegral errno) msg
 
 {- ---------------------------------------------------------------------- -}
 
