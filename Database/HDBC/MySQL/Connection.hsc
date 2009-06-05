@@ -23,22 +23,22 @@ import Database.HDBC (throwSqlError)
 
 {- | Connection information to use with connectMySQL.
 
-     You must either supply a host and port, or the name of a Unix
-     socket.
+     You must either supply a host and port, or the full path to a
+     Unix socket.
 
 -}
 data MySQLConnectInfo = MySQLConnectInfo
-    { -- | e.g., @\"db1.example.com\"@
+    { -- | The server's hostname; e.g., @\"db1.example.com\"@
       mysqlHost       :: String
-      -- | e.g., @\"scott\"@
+      -- | The MySQL username to use for login; e.g., @\"scott\"@
     , mysqlUser       :: String
-      -- | e.g., @\"tiger\"@
+      -- | The MySQL password to use for login; e.g., @\"tiger\"@
     , mysqlPassword   :: String
       -- | the \"default\" database name; e.g., @\"emp\"@
     , mysqlDatabase   :: String
-      -- | e.g., @3306@
+      -- | The port on which to connect to the server; e.g., @3306@
     , mysqlPort       :: Int
-      -- | e.g., @\"\/var\/lib\/mysql.sock\"@
+      -- | The absolute path of the server's Unix socket; e.g., @\"\/var\/lib\/mysql.sock\"@
     , mysqlUnixSocket :: String
     }
 
