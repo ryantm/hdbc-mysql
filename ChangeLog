@@ -1,3 +1,9 @@
+2009-06-05  Chris Waterson  <waterson@maubi.net>
+
+	* HDBC-mysql-0.6. Use Foreign.Concurrent to correctly incorporate
+	Haskell finalizer for binds.  Fix handling of SqlWord32 and
+	SqlWord64 values: tip o' the cap to yeoh@cs.wisc.edu.
+
 2009-03-02  Chris Waterson  <waterson@maubi.net>
 
 	* HDBC-mysql-0.5. Use "throwSqlError" instead of "throwDyn" so

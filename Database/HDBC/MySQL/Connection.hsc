@@ -9,8 +9,8 @@ import Control.Exception
 import Control.Monad
 import Foreign
 import Foreign.C
+import qualified Foreign.Concurrent
 import qualified Data.ByteString as B
-import Data.IORef
 import Data.List (isPrefixOf)
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -190,7 +190,10 @@ data MYSQL_BIND = MYSQL_BIND
     , bindError        :: Ptr CChar
     , bindBufferType   :: CInt
     , bindBufferLength :: CULong
+    , bindIsUnsigned   :: CChar
     }
+
+data Signedness = Signed | Unsigned deriving (Eq)
 
 instance Storable MYSQL_BIND where
     sizeOf _      = #const sizeof(MYSQL_BIND)
@@ -198,7 +201,7 @@ instance Storable MYSQL_BIND where
 
     peek _ = error "MYSQL_BIND: peek"
 
-    poke p (MYSQL_BIND len_ isNull_ buf_ err_ buftyp buflen) = do
+    poke p (MYSQL_BIND len_ isNull_ buf_ err_ buftyp buflen unsigned) = do
         memset (castPtr p) 0 #{const sizeof(MYSQL_BIND)}
         (#poke MYSQL_BIND, length)        p len_
         (#poke MYSQL_BIND, is_null)       p isNull_
@@ -206,6 +209,7 @@ instance Storable MYSQL_BIND where
         (#poke MYSQL_BIND, error)         p err_
         (#poke MYSQL_BIND, buffer_type)   p buftyp
         (#poke MYSQL_BIND, buffer_length) p buflen
+        (#poke MYSQL_BIND, is_unsigned)   p unsigned
 
 data MYSQL_TIME = MYSQL_TIME
     { timeYear       :: CUInt
@@ -246,7 +250,7 @@ newStatement mysql__ query = withForeignPtr mysql__ $ \mysql_ -> do
 
   -- If an error occurs below, we'll lose the reference to the foreign
   -- pointer and run the finalizer.
-  stmt__ <- newForeignPtr mysql_stmt_close stmt_
+  stmt__ <- Foreign.Concurrent.newForeignPtr stmt_ (mysql_stmt_close stmt_)
 
   withCStringLen query $ \(query_, len) -> do
       rv <- mysql_stmt_prepare stmt_ query_ (fromIntegral len)
@@ -266,12 +270,7 @@ newStatement mysql__ query = withForeignPtr mysql__ $ \mysql_ -> do
           rv' <- mysql_stmt_bind_result stmt_ bind_
           when (rv' /= 0) (statementError stmt_))
 
-  -- This is mildly insane.  Create an IORef where we can store the
-  -- finalizer, so we can later free the finalizer.
-  gptr <- newIORef nullFunPtr
-  g <- makeFinalizer $ freeBinds results gptr
-  writeIORef gptr g
-  addForeignPtrFinalizer g stmt__
+  Foreign.Concurrent.addForeignPtrFinalizer stmt__ (freeBinds results)
 
   -- We pass the connection ForeignPtr down to execute and fetchRow as
   -- a silly way to keep a reference to it alive so long as the
@@ -286,14 +285,9 @@ newStatement mysql__ query = withForeignPtr mysql__ $ \mysql_ -> do
              , Types.describeResult = return $ map sqlColDescOf fields
              }
 
-type Finalizer a = Ptr a -> IO ()
-foreign import ccall "wrapper" makeFinalizer
-    :: Finalizer a -> IO (FunPtr (Finalizer a))
-
 -- Release the storage allocated for each bind.
-freeBinds :: [MYSQL_BIND] -> IORef (FunPtr (Finalizer a)) -> Ptr MYSQL_STMT -> IO ()
-freeBinds binds selfPtrRef _ = do
-  readIORef selfPtrRef >>= freeHaskellFunPtr
+freeBinds :: [MYSQL_BIND] -> IO ()
+freeBinds binds = do
   mapM_ freeOneBind binds
     where freeOneBind bind = do
             free $ bindLength bind
@@ -365,45 +359,46 @@ bindOfSqlValue Types.SqlNull =
                    , bindError        = nullPtr
                    , bindBufferType   = #{const MYSQL_TYPE_NULL}
                    , bindBufferLength = 0
+                   , bindIsUnsigned   = 0
                    }
 
 bindOfSqlValue (Types.SqlString s) =
     -- XXX this might not handle embedded null characters correctly.
-    bindOfSqlValue' (length s) (withCString s) #{const MYSQL_TYPE_VAR_STRING}
+    bindOfSqlValue' (length s) (withCString s) #{const MYSQL_TYPE_VAR_STRING} Signed
 
 bindOfSqlValue (Types.SqlByteString s) =
-    bindOfSqlValue' (B.length s) (B.useAsCString s) #{const MYSQL_TYPE_VAR_STRING}
+    bindOfSqlValue' (B.length s) (B.useAsCString s) #{const MYSQL_TYPE_VAR_STRING} Signed
 
 bindOfSqlValue (Types.SqlInteger n) =
-    bindOfSqlValue' (8::Int) (with (fromIntegral n :: CLLong)) #{const MYSQL_TYPE_LONGLONG}
+    bindOfSqlValue' (8::Int) (with (fromIntegral n :: CLLong)) #{const MYSQL_TYPE_LONGLONG} Signed
 
 bindOfSqlValue (Types.SqlBool b) =
-    bindOfSqlValue' (1::Int) (with (if b then 1 else 0 :: CChar)) #{const MYSQL_TYPE_TINY}
+    bindOfSqlValue' (1::Int) (with (if b then 1 else 0 :: CChar)) #{const MYSQL_TYPE_TINY} Signed
 
 bindOfSqlValue (Types.SqlChar c) =
-    bindOfSqlValue' (1::Int) (with c) #{const MYSQL_TYPE_TINY}
+    bindOfSqlValue' (1::Int) (with c) #{const MYSQL_TYPE_TINY} Signed
 
 bindOfSqlValue (Types.SqlDouble d) =
-    bindOfSqlValue' (8::Int) (with (realToFrac d :: CDouble)) #{const MYSQL_TYPE_DOUBLE}
+    bindOfSqlValue' (8::Int) (with (realToFrac d :: CDouble)) #{const MYSQL_TYPE_DOUBLE} Signed
 
 bindOfSqlValue (Types.SqlInt32 n) =
-    bindOfSqlValue' (4::Int) (with n) #{const MYSQL_TYPE_LONG}
+    bindOfSqlValue' (4::Int) (with n) #{const MYSQL_TYPE_LONG} Signed
 
 bindOfSqlValue (Types.SqlInt64 n) =
-    bindOfSqlValue' (8::Int) (with n) #{const MYSQL_TYPE_LONGLONG}
+    bindOfSqlValue' (8::Int) (with n) #{const MYSQL_TYPE_LONGLONG} Signed
 
 bindOfSqlValue (Types.SqlRational n) =
-    bindOfSqlValue' (8::Int) (with (realToFrac n :: CDouble)) #{const MYSQL_TYPE_DOUBLE}
+    bindOfSqlValue' (8::Int) (with (realToFrac n :: CDouble)) #{const MYSQL_TYPE_DOUBLE} Signed
 
 bindOfSqlValue (Types.SqlWord32 n) =
-    bindOfSqlValue' (4::Int) (with n) #{const MYSQL_TYPE_LONG}
+    bindOfSqlValue' (4::Int) (with n) #{const MYSQL_TYPE_LONG} Unsigned
 
 bindOfSqlValue (Types.SqlWord64 n) =
-    bindOfSqlValue' (8::Int) (with n) #{const MYSQL_TYPE_LONGLONG}
+    bindOfSqlValue' (8::Int) (with n) #{const MYSQL_TYPE_LONGLONG} Unsigned
 
 bindOfSqlValue (Types.SqlEpochTime epoch) =
     let t = utcToMysqlTime $ posixSecondsToUTCTime (fromIntegral epoch) in
-    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_DATETIME}
+    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_DATETIME} Signed
         where utcToMysqlTime :: UTCTime -> MYSQL_TIME
               utcToMysqlTime (UTCTime day difftime) =
                   let (y, m, d) = toGregorian day
@@ -418,16 +413,16 @@ bindOfSqlValue (Types.SqlTimeDiff n) =
         mn = fromIntegral $ n `div` 60 `mod` 60
         s  = fromIntegral $ n `mod` 60
         t  = MYSQL_TIME 0 0 0 h mn s in
-    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_TIME}
+    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_TIME} Signed
 
 -- A nasty helper function that cuts down on the boilerplate a bit.
 bindOfSqlValue' :: (Integral a, Storable b) =>
                    a ->
                        ((Ptr b -> IO MYSQL_BIND) -> IO MYSQL_BIND) ->
-                           CInt ->
+                           CInt -> Signedness ->
                                IO MYSQL_BIND
 
-bindOfSqlValue' len buf btype =
+bindOfSqlValue' len buf btype signedness =
     let buflen = fromIntegral len in
     with (0 :: CChar) $ \isNull_ ->
         with buflen $ \len_ ->
@@ -439,14 +434,16 @@ bindOfSqlValue' len buf btype =
                            , bindError        = nullPtr
                            , bindBufferType   = btype
                            , bindBufferLength = buflen
+                           , bindIsUnsigned   = (if signedness == Unsigned then 1 else 0)
                            }
 
 -- Returns an appropriate binding structure for a field.
 resultOfField :: MYSQL_FIELD -> IO MYSQL_BIND
 resultOfField field =
-    let ftype = fieldType field
-        btype = boundType ftype (fieldDecimals field)
-        size  = boundSize btype (fieldLength field) in
+    let ftype    = fieldType field
+        unsigned = (fieldFlags field .&. #{const UNSIGNED_FLAG}) /= 0
+        btype    = boundType ftype (fieldDecimals field)
+        size     = boundSize btype (fieldLength field) in
     do size_   <- new size
        isNull_ <- new (0 :: CChar)
        error_  <- new (0 :: CChar)
@@ -457,6 +454,7 @@ resultOfField field =
                            , bindError        = error_
                            , bindBufferType   = btype
                            , bindBufferLength = size
+                           , bindIsUnsigned   = if unsigned then 1 else 0
                            }
 
 -- Returns the appropriate result type for a particular host type.
@@ -762,8 +760,8 @@ foreign import ccall unsafe mysql_fetch_field
 foreign import ccall unsafe mysql_stmt_fetch
     :: Ptr MYSQL_STMT -> IO CInt
 
-foreign import ccall unsafe "&mysql_stmt_close" mysql_stmt_close
-    :: FunPtr (Ptr MYSQL_STMT -> IO ())
+foreign import ccall unsafe mysql_stmt_close
+    :: Ptr MYSQL_STMT -> IO ()
 
 foreign import ccall unsafe mysql_stmt_errno
     :: Ptr MYSQL_STMT -> IO CInt
