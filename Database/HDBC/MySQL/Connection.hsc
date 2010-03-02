@@ -2,7 +2,7 @@
 {-# OPTIONS -fglasgow-exts #-}
 
 module Database.HDBC.MySQL.Connection
-    (connectMySQL, MySQLConnectInfo(..), defaultMySQLConnectInfo)
+    (connectMySQL, MySQLConnectInfo(..), defaultMySQLConnectInfo, Connection)
 where
 
 import Control.Exception

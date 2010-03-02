@@ -4,10 +4,13 @@ import Control.Monad
 import Database.HDBC
 import Database.HDBC.MySQL
 
+connectDatabase :: IO Connection
+connectDatabase = connectMySQL defaultMySQLConnectInfo
+                  { mysqlHost = "putterwell"
+                  }
+
 go :: IO ()
-go = do conn <- connectMySQL defaultMySQLConnectInfo
-                { mysqlHost = "putterwell"
-                }
+go = do conn <- connectDatabase
 
         {-
 

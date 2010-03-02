@@ -37,6 +37,6 @@ time zone is UTC.
 
 -}
 module Database.HDBC.MySQL
-    (connectMySQL, MySQLConnectInfo(..), defaultMySQLConnectInfo)
+    (connectMySQL, MySQLConnectInfo(..), defaultMySQLConnectInfo, Connection)
 where
 import Database.HDBC.MySQL.Connection
