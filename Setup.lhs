@@ -23,21 +23,19 @@ main = defaultMainWithHooks simpleUserHooks {
     return lbi {
       localPkgDescr = updatePackageDescription
                         (Just bi, []) (localPkgDescr lbi)
-    } 
+    }
 }
 
 mysqlConfigProgram = (simpleProgram "mysql_config") {
     programFindLocation = \verbosity -> do
-      mysql_config  <- findProgramOnPath "mysql_config"  verbosity 
+      mysql_config  <- findProgramOnPath "mysql_config"  verbosity
       mysql_config5 <- findProgramOnPath "mysql_config5" verbosity
       return (mysql_config `mplus` mysql_config5)
   }
 
 mysqlBuildInfo :: LocalBuildInfo -> IO BuildInfo
 mysqlBuildInfo lbi = do
-  (mysqlConfigProg, _) <- requireProgram verbosity
-                          mysqlConfigProgram AnyVersion (withPrograms lbi)
-  let mysqlConfig = rawSystemProgramStdout verbosity mysqlConfigProg
+  let mysqlConfig = rawSystemProgramStdoutConf verbosity mysqlConfigProgram (withPrograms lbi)
       ws = " \n\r\t"
 
   includeDirs <- return . map (drop 2) . split ws =<< mysqlConfig ["--include"]
