@@ -350,92 +350,103 @@ bindParams stmt_ params = do
 -- pass its value.
 bindOfSqlValue :: Types.SqlValue -> IO MYSQL_BIND
 
-bindOfSqlValue Types.SqlNull =
-    with (1 :: CChar) $ \isNull_ ->
-        return $ MYSQL_BIND
-                   { bindLength       = nullPtr
-                   , bindIsNull       = isNull_
-                   , bindBuffer       = nullPtr
-                   , bindError        = nullPtr
-                   , bindBufferType   = #{const MYSQL_TYPE_NULL}
-                   , bindBufferLength = 0
-                   , bindIsUnsigned   = 0
-                   }
+bindOfSqlValue Types.SqlNull = do
+  isNull_ <- new (1 :: CChar)
+  return $ MYSQL_BIND
+             { bindLength       = nullPtr
+             , bindIsNull       = isNull_
+             , bindBuffer       = nullPtr
+             , bindError        = nullPtr
+             , bindBufferType   = #{const MYSQL_TYPE_NULL}
+             , bindBufferLength = 0
+             , bindIsUnsigned   = 0
+             }
 
-bindOfSqlValue (Types.SqlString s) =
-    -- XXX this might not handle embedded null characters correctly.
-    bindOfSqlValue' (length s) (withCString s) #{const MYSQL_TYPE_VAR_STRING} Signed
+bindOfSqlValue (Types.SqlString s) = do
+  -- XXX this might not handle embedded null characters correctly.
+  (buf_, len) <- newCAStringLen s
+  bindOfSqlValue' len buf_ #{const MYSQL_TYPE_VAR_STRING} Signed
 
-bindOfSqlValue (Types.SqlByteString s) =
-    bindOfSqlValue' (B.length s) (B.useAsCString s) #{const MYSQL_TYPE_VAR_STRING} Signed
+bindOfSqlValue (Types.SqlByteString s) = do
+  B.useAsCString s $ \c_ -> do
+    let len = B.length s
+    buf_ <- mallocBytes len
+    copyBytes buf_ c_ len
+    bindOfSqlValue' len buf_ #{const MYSQL_TYPE_VAR_STRING} Signed
 
-bindOfSqlValue (Types.SqlInteger n) =
-    bindOfSqlValue' (8::Int) (with (fromIntegral n :: CLLong)) #{const MYSQL_TYPE_LONGLONG} Signed
+bindOfSqlValue (Types.SqlInteger n) = do
+  buf_ <- new (fromIntegral n :: CLLong)
+  bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_LONGLONG} Signed
 
-bindOfSqlValue (Types.SqlBool b) =
-    bindOfSqlValue' (1::Int) (with (if b then 1 else 0 :: CChar)) #{const MYSQL_TYPE_TINY} Signed
+bindOfSqlValue (Types.SqlBool b) = do
+  buf_ <- new (if b then 1 else 0 :: CChar)
+  bindOfSqlValue' (1::Int) buf_ #{const MYSQL_TYPE_TINY} Signed
 
-bindOfSqlValue (Types.SqlChar c) =
-    bindOfSqlValue' (1::Int) (with c) #{const MYSQL_TYPE_TINY} Signed
+bindOfSqlValue (Types.SqlChar c) = do
+  buf_ <- new c
+  bindOfSqlValue' (1::Int) buf_ #{const MYSQL_TYPE_TINY} Signed
 
-bindOfSqlValue (Types.SqlDouble d) =
-    bindOfSqlValue' (8::Int) (with (realToFrac d :: CDouble)) #{const MYSQL_TYPE_DOUBLE} Signed
+bindOfSqlValue (Types.SqlDouble d) = do
+  buf_ <- new (realToFrac d :: CDouble)
+  bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_DOUBLE} Signed
 
-bindOfSqlValue (Types.SqlInt32 n) =
-    bindOfSqlValue' (4::Int) (with n) #{const MYSQL_TYPE_LONG} Signed
+bindOfSqlValue (Types.SqlInt32 n) = do
+  buf_ <- new n
+  bindOfSqlValue' (4::Int) buf_ #{const MYSQL_TYPE_LONG} Signed
 
-bindOfSqlValue (Types.SqlInt64 n) =
-    bindOfSqlValue' (8::Int) (with n) #{const MYSQL_TYPE_LONGLONG} Signed
+bindOfSqlValue (Types.SqlInt64 n) = do
+  buf_ <- new n
+  bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_LONGLONG} Signed
 
-bindOfSqlValue (Types.SqlRational n) =
-    bindOfSqlValue' (8::Int) (with (realToFrac n :: CDouble)) #{const MYSQL_TYPE_DOUBLE} Signed
+bindOfSqlValue (Types.SqlRational n) = do
+  buf_ <- new (realToFrac n :: CDouble)
+  bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_DOUBLE} Signed
 
-bindOfSqlValue (Types.SqlWord32 n) =
-    bindOfSqlValue' (4::Int) (with n) #{const MYSQL_TYPE_LONG} Unsigned
+bindOfSqlValue (Types.SqlWord32 n) = do
+  buf_ <- new n
+  bindOfSqlValue' (4::Int) buf_ #{const MYSQL_TYPE_LONG} Unsigned
 
-bindOfSqlValue (Types.SqlWord64 n) =
-    bindOfSqlValue' (8::Int) (with n) #{const MYSQL_TYPE_LONGLONG} Unsigned
+bindOfSqlValue (Types.SqlWord64 n) = do
+  buf_ <- new n
+  bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_LONGLONG} Unsigned
 
-bindOfSqlValue (Types.SqlEpochTime epoch) =
-    let t = utcToMysqlTime $ posixSecondsToUTCTime (fromIntegral epoch) in
-    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_DATETIME} Signed
-        where utcToMysqlTime :: UTCTime -> MYSQL_TIME
-              utcToMysqlTime (UTCTime day difftime) =
-                  let (y, m, d) = toGregorian day
-                      t  = floor $ (realToFrac difftime :: Double)
-                      h  = t `div` 3600
-                      mn = t `div` 60 `mod` 60
-                      s  = t `mod` 60
-                  in MYSQL_TIME (fromIntegral y) (fromIntegral m) (fromIntegral d) h mn s
+bindOfSqlValue (Types.SqlEpochTime epoch) = do
+  let t = utcToMysqlTime $ posixSecondsToUTCTime (fromIntegral epoch)
+  buf_ <- new t
+  bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) buf_ #{const MYSQL_TYPE_DATETIME} Signed
+      where utcToMysqlTime :: UTCTime -> MYSQL_TIME
+            utcToMysqlTime (UTCTime day difftime) =
+                let (y, m, d) = toGregorian day
+                    t  = floor $ (realToFrac difftime :: Double)
+                    h  = t `div` 3600
+                    mn = t `div` 60 `mod` 60
+                    s  = t `mod` 60
+                in MYSQL_TIME (fromIntegral y) (fromIntegral m) (fromIntegral d) h mn s
 
-bindOfSqlValue (Types.SqlTimeDiff n) =
-    let h  = fromIntegral $ n `div` 3600
-        mn = fromIntegral $ n `div` 60 `mod` 60
-        s  = fromIntegral $ n `mod` 60
-        t  = MYSQL_TIME 0 0 0 h mn s in
-    bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) (with t) #{const MYSQL_TYPE_TIME} Signed
+bindOfSqlValue (Types.SqlTimeDiff n) = do
+  let h  = fromIntegral $ n `div` 3600
+      mn = fromIntegral $ n `div` 60 `mod` 60
+      s  = fromIntegral $ n `mod` 60
+      t  = MYSQL_TIME 0 0 0 h mn s
+  buf_ <- new t
+  bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) buf_ #{const MYSQL_TYPE_TIME} Signed
 
 -- A nasty helper function that cuts down on the boilerplate a bit.
-bindOfSqlValue' :: (Integral a, Storable b) =>
-                   a ->
-                       ((Ptr b -> IO MYSQL_BIND) -> IO MYSQL_BIND) ->
-                           CInt -> Signedness ->
-                               IO MYSQL_BIND
+bindOfSqlValue' :: (Integral a, Storable b) => a -> Ptr b -> CInt -> Signedness -> IO MYSQL_BIND
 
-bindOfSqlValue' len buf btype signedness =
-    let buflen = fromIntegral len in
-    with (0 :: CChar) $ \isNull_ ->
-        with buflen $ \len_ ->
-            buf $ \buf_ ->
-                return $ MYSQL_BIND
-                           { bindLength       = len_
-                           , bindIsNull       = isNull_
-                           , bindBuffer       = castPtr buf_
-                           , bindError        = nullPtr
-                           , bindBufferType   = btype
-                           , bindBufferLength = buflen
-                           , bindIsUnsigned   = (if signedness == Unsigned then 1 else 0)
-                           }
+bindOfSqlValue' len buf_ btype signedness = do
+  let buflen = fromIntegral len
+  isNull_ <- new (0 :: CChar)
+  len_ <- new buflen
+  return $ MYSQL_BIND
+             { bindLength       = len_
+             , bindIsNull       = isNull_
+             , bindBuffer       = castPtr buf_
+             , bindError        = nullPtr
+             , bindBufferType   = btype
+             , bindBufferLength = buflen
+             , bindIsUnsigned   = (if signedness == Unsigned then 1 else 0)
+             }
 
 -- Returns an appropriate binding structure for a field.
 resultOfField :: MYSQL_FIELD -> IO MYSQL_BIND
