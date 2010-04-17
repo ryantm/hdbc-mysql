@@ -11,6 +11,7 @@ import Foreign
 import Foreign.C
 import qualified Foreign.Concurrent
 import qualified Data.ByteString as B
+import Data.ByteString.UTF8 (fromString)
 import Data.List (isPrefixOf)
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -366,9 +367,7 @@ bindOfSqlValue Types.SqlNull = do
              }
 
 bindOfSqlValue (Types.SqlString s) = do
-  -- XXX this might not handle embedded null characters correctly.
-  (buf_, len) <- newCAStringLen s
-  bindOfSqlValue' len buf_ #{const MYSQL_TYPE_VAR_STRING} Signed
+  bindOfSqlValue (Types.SqlByteString $ fromString s)
 
 bindOfSqlValue (Types.SqlByteString s) = do
   B.useAsCString s $ \c_ -> do
@@ -541,7 +540,7 @@ nonNullCellValue #{const MYSQL_TYPE_DOUBLE} p _ = do
   return $ Types.SqlDouble (realToFrac n)
 
 nonNullCellValue #{const MYSQL_TYPE_VAR_STRING} p len =
-    peekCStringLen ((castPtr p), fromIntegral len) >>= return . Types.SqlString
+    B.packCStringLen ((castPtr p), fromIntegral len) >>= return . Types.SqlByteString
 
 nonNullCellValue #{const MYSQL_TYPE_DATETIME} p _ = do
   t :: MYSQL_TIME <- peek $ castPtr p
