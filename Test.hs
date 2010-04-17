@@ -12,8 +12,6 @@ connectDatabase = connectMySQL defaultMySQLConnectInfo
 go :: IO ()
 go = do conn <- connectDatabase
 
-        {-
-
         putStrLn $ "driver " ++ (show $ hdbcDriverName conn)
         putStrLn $ "server version " ++ (show $ dbServerVer conn)
         tables <- getTables conn
@@ -26,11 +24,12 @@ go = do conn <- connectDatabase
         rows1 <- quickQuery' conn "SELECT str FROM album" []
         forM_ (zip rows0 rows1) $ \(a, str) -> putStrLn $ "a=" ++ (show a) ++ ", str=" ++ (show str)
 
-         -}
-
+        {-
         stmt <- prepare conn "INSERT INTO album VALUES (?, ?)"
         n <- execute stmt [SqlWord32 3000000000, SqlString "hello"]
         commit conn
+        -}
+
 
 main :: IO ()
 main = handleSqlError (replicateM_ 1 go)
