@@ -318,8 +318,9 @@ execute :: ForeignPtr MYSQL -> ForeignPtr MYSQL_STMT -> [Types.SqlValue] -> IO I
 execute mysql__ stmt__ params =
     withForeignPtr mysql__ $ \_ ->
         withForeignPtr stmt__ $ \stmt_ -> do
-          bindParams stmt_ params
+          binds <- bindParams stmt_ params
           rv <- mysql_stmt_execute stmt_
+          freeBinds binds
           when (rv /= 0) (statementError stmt_)
           nrows <- mysql_stmt_affected_rows stmt_
 
@@ -329,7 +330,7 @@ execute mysql__ stmt__ params =
           return $ fromIntegral (if nrows == (-1 :: CULLong) then 0 else nrows)
 
 -- Binds placeholder parameters to values.
-bindParams :: Ptr MYSQL_STMT -> [Types.SqlValue] -> IO ()
+bindParams :: Ptr MYSQL_STMT -> [Types.SqlValue] -> IO [MYSQL_BIND]
 bindParams stmt_ params = do
   param_count <- mysql_stmt_param_count stmt_
   let nparams = fromIntegral param_count
@@ -345,6 +346,8 @@ bindParams stmt_ params = do
   withArray binds $ \bind_ -> do
       rv <- mysql_stmt_bind_param stmt_ bind_
       when (rv /= 0) (statementError stmt_)
+
+  return binds
 
 -- Given a SqlValue, return a MYSQL_BIND structure that we can use to
 -- pass its value.
