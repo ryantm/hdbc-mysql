@@ -37,6 +37,9 @@ Caveats
     interpret the times using the current connection's default
     time zone setting, instead.  Is that better?  Or worse?
 
+  * Regardless, the types I convert to are now deprecated, and I need
+    to implement the new types (SqlLocalDate, etc.)
+
   * Out of the box, MySQL probably uses MyISAM tables to store its
     data, and MyISAM tables don't support transactions.  Yet, I'm
     going to blindly respond "yes" if you ask whether the driver
@@ -49,12 +52,6 @@ Caveats
   * I'm not sure that I can tell the difference between a MySQL TEXT
     and a MySQL BLOB column.  If you ask about the metadata of either,
     I'll tell you it's a SqlBinaryT.
-
-  * I have not tested this with non-ASCII data.  I don't pay any
-    attention to the connection character set.  I use withCString,
-    which doesn't pay any attention, either.  It may be that this
-    total lack of attention results in things serendipitously working
-    if the MySQL connection defaults to using UTF-8 as the encoding.
 
   * The statement and table metadata could stand to be improved a bit.
     In particular, it would be nice if "describeTable foo" and
@@ -70,10 +67,6 @@ Caveats
   * We might crash if someone opens a connection, prepares a
     statement, explicitly disconnects the connection, and then tries
     to play with the statement.
-
-  * I need to verify that embedded null characters on bound parameter
-    strings work correctly.  I'm using "withCString", when I probably
-    should be using "withCStringLen".
 
   * It probably makes sense to marshall to the SqlByteString type when
     retrieving BLOB data.
