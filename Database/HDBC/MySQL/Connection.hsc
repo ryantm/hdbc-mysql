@@ -278,6 +278,7 @@ newStatement mysql__ query = withForeignPtr mysql__ $ \mysql_ -> do
   -- statement is around.
   return $ Types.Statement
              { Types.execute        = execute mysql__ stmt__
+             , Types.executeRaw     = executeRaw mysql__ stmt__
              , Types.executeMany    = mapM_ $ execute mysql__ stmt__
              , Types.finish         = finalizeForeignPtr stmt__
              , Types.fetchRow       = fetchRow mysql__ stmt__ results
@@ -449,6 +450,13 @@ bindOfSqlValue' len buf_ btype signedness = do
              , bindBufferLength = buflen
              , bindIsUnsigned   = (if signedness == Unsigned then 1 else 0)
              }
+
+executeRaw :: ForeignPtr MYSQL -> ForeignPtr MYSQL_STMT -> IO ()
+executeRaw mysql__ stmt__ =
+    withForeignPtr mysql__ $ \_ ->
+        withForeignPtr stmt__ $ \stmt_ -> do
+          rv <- mysql_stmt_execute stmt_
+          when (rv /= 0) (statementError stmt_)
 
 -- Returns an appropriate binding structure for a field.
 resultOfField :: MYSQL_FIELD -> IO MYSQL_BIND
