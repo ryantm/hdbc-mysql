@@ -434,6 +434,30 @@ bindOfSqlValue (Types.SqlTimeDiff n) = do
   buf_ <- new t
   bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) buf_ #{const MYSQL_TYPE_TIME} Signed
 
+bindOfSqlValue (Types.SqlLocalDate _) =
+    error "SqlLocalDate: bind type not implemented"
+
+bindOfSqlValue (Types.SqlLocalTimeOfDay _) =
+    error "SqlLocalTimeOfDay: bind type not implemented"
+
+bindOfSqlValue (Types.SqlZonedLocalTimeOfDay _ _) =
+    error "SqlZonedLocalTimeOfDay: bind type not implemented"
+
+bindOfSqlValue (Types.SqlLocalTime _) =
+    error "SqlLocalTime: bind type not implemented"
+
+bindOfSqlValue (Types.SqlZonedTime _) =
+    error "SqlZonedTime: bind type not implemented"
+
+bindOfSqlValue (Types.SqlUTCTime _) =
+    error "SqlUTCTime: bind type not implemented"
+
+bindOfSqlValue (Types.SqlDiffTime _) =
+    error "SqlDiffTime: bind type not implemented"
+
+bindOfSqlValue (Types.SqlPOSIXTime _) =
+    error "SqlPOSIXtime: bind type not implemented"
+
 -- A nasty helper function that cuts down on the boilerplate a bit.
 bindOfSqlValue' :: (Integral a, Storable b) => a -> Ptr b -> CInt -> Signedness -> IO MYSQL_BIND
 
