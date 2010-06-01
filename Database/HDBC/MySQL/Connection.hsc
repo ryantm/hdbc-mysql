@@ -61,6 +61,7 @@ data Connection = Connection
     , commit :: IO ()
     , rollback :: IO ()
     , run :: String -> [Types.SqlValue] -> IO Integer
+    , runRaw :: String -> IO ()
     , prepare :: String -> IO Types.Statement
     , clone :: IO Connection
     , hdbcDriverName :: String
@@ -78,6 +79,7 @@ instance Types.IConnection Connection where
   commit               = commit
   rollback             = rollback
   run                  = run
+  runRaw               = runRaw
   prepare              = prepare
   clone                = clone
   hdbcDriverName       = hdbcDriverName
@@ -130,6 +132,7 @@ connectMySQL info = do
                    , commit               = doCommit mysql__ >> doStartTransaction mysql__
                    , rollback             = doRollback mysql__ >> doStartTransaction mysql__
                    , run                  = doRun mysql__
+                   , runRaw               = flip doQuery mysql__
                    , prepare              = newStatement mysql__
                    , clone                = connectMySQL info
                    , hdbcDriverName       = "mysql"
