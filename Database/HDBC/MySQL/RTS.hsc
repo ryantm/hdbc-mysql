@@ -15,11 +15,14 @@ import Foreign.Storable (Storable(..))
 -- blocked.  The @mysqlclient@ C library does not correctly restart
 -- system calls if they are interrupted by signals, so many MySQL API
 -- calls can unexpectedly fail when called from a Haskell application.
+-- This is most likely to occur if you are linking against GHC's
+-- threaded runtime (using the @-threaded@ option).
 --
 -- This function blocks @SIGALRM@ and @SIGVTALRM@, runs your action,
 -- then unblocks those signals.  If you have a series of HDBC calls
 -- that may block for a period of time, it may be wise to wrap them in
--- this action.
+-- this action.  Blocking and unblocking signals is cheap, but not
+-- free.
 --
 -- Here is an example of an exception that could be avoided by
 -- temporarily blocking GHC's runtime signals:
