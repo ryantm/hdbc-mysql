@@ -1,5 +1,12 @@
 {- |
 
+Module      : Database.HDBC.MySQL
+Copyright   : Copyright (c) 2009-2010 Chris Waterson
+License     : LGPL
+Maintainer  : bos@mailrank.com
+Stability   : experimental
+Portability : GHC
+
 This module provides a MySQL driver for the HDBC database interface.
 To use it, invoke the 'connectMySQL' method to create an
 @Database.HDBC.IConnection@ that you can use to interact with a MySQL
@@ -37,6 +44,13 @@ time zone is UTC.
 
 -}
 module Database.HDBC.MySQL
-    (connectMySQL, MySQLConnectInfo(..), defaultMySQLConnectInfo, Connection)
-where
+    (
+      MySQLConnectInfo(..)
+    , Connection
+    , connectMySQL
+    , defaultMySQLConnectInfo
+    , withRTSSignalsBlocked
+    ) where
+
 import Database.HDBC.MySQL.Connection
+import Database.HDBC.MySQL.RTS
