@@ -419,8 +419,12 @@ bindOfSqlValue (Types.SqlWord64 n) = do
   buf_ <- new n
   bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_LONGLONG} Unsigned
 
-bindOfSqlValue (Types.SqlEpochTime epoch) = do
-  let t = utcToMysqlTime $ posixSecondsToUTCTime (fromIntegral epoch)
+bindOfSqlValue (Types.SqlEpochTime epoch) = 
+  bindOfSqlValue (Types.SqlUTCTime t)
+    where t = posixSecondsToUTCTime (fromIntegral epoch)
+                                            
+bindOfSqlValue (Types.SqlUTCTime utct) = do
+  let t = utcToMysqlTime utct
   buf_ <- new t
   bindOfSqlValue' (#{const sizeof(MYSQL_TIME)}::Int) buf_ #{const MYSQL_TYPE_DATETIME} Signed
       where utcToMysqlTime :: UTCTime -> MYSQL_TIME
@@ -454,9 +458,6 @@ bindOfSqlValue (Types.SqlLocalTime _) =
 
 bindOfSqlValue (Types.SqlZonedTime _) =
     error "SqlZonedTime: bind type not implemented"
-
-bindOfSqlValue (Types.SqlUTCTime _) =
-    error "SqlUTCTime: bind type not implemented"
 
 bindOfSqlValue (Types.SqlDiffTime _) =
     error "SqlDiffTime: bind type not implemented"
