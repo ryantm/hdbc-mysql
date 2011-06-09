@@ -26,7 +26,7 @@ main = do
               'mysqlPassword' = \"tiger\"
             }
     'quickQuery'' conn \"SELECT 1 + 1\" []
-  forM_ rows $ \row -> putStrLn $ show row
+  forM_ rows $ \\row -> putStrLn $ show row
 @
 
 There are some important caveats to note about this driver.
