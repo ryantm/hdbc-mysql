@@ -3,7 +3,7 @@
 Module      : Database.HDBC.MySQL
 Copyright   : Copyright (c) 2009-2010 Chris Waterson
 License     : LGPL
-Maintainer  : bos@mailrank.com
+Maintainer  : bos@serpentine.com
 Stability   : experimental
 Portability : GHC
 
