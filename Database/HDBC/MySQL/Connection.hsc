@@ -44,6 +44,8 @@ data MySQLConnectInfo = MySQLConnectInfo
     , mysqlPort       :: Int
       -- | The absolute path of the server's Unix socket; e.g., @\"\/var\/lib\/mysql.sock\"@
     , mysqlUnixSocket :: String
+      -- | The group name in my.cnf from which it reads options; e.g., @\"test\"@
+    , mysqlGroup      :: Maybe String
     }
 
 {- | Typical connection information, meant to be overridden partially,
@@ -57,7 +59,7 @@ data MySQLConnectInfo = MySQLConnectInfo
 
 -}
 defaultMySQLConnectInfo :: MySQLConnectInfo
-defaultMySQLConnectInfo = MySQLConnectInfo "127.0.0.1" "root" "" "test" 3306 ""
+defaultMySQLConnectInfo = MySQLConnectInfo "127.0.0.1" "root" "" "test" 3306 "" Nothing
 
 data Connection = Connection
     { disconnect :: IO ()
@@ -104,6 +106,11 @@ connectMySQL :: MySQLConnectInfo -> IO Connection
 connectMySQL info = do
   mysql_ <- mysql_init nullPtr
   when (mysql_ == nullPtr) (error "mysql_init failed")
+  case mysqlGroup info of
+    Just group -> withCString group $ \group_ -> do
+                      _ <- mysql_options mysql_ #{const MYSQL_READ_DEFAULT_GROUP} (castPtr group_)
+                      return ()
+    Nothing -> return ()
   withCString (mysqlHost info) $ \host_ ->
       withCString (mysqlUser info) $ \user_ ->
           withCString (mysqlPassword info) $ \passwd_ ->
@@ -799,6 +806,12 @@ foreign import ccall unsafe mysql_get_proto_info
 foreign import ccall unsafe mysql_init
  :: Ptr MYSQL
  -> IO (Ptr MYSQL)
+
+foreign import ccall unsafe mysql_options
+ :: Ptr MYSQL
+ -> CInt
+ -> Ptr ()
+ -> IO CInt
 
 foreign import ccall unsafe mysql_real_connect
  :: Ptr MYSQL -- the context
