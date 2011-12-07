@@ -560,10 +560,19 @@ fetchRow mysql__ stmt__ results =
           rv <- mysql_stmt_fetch stmt_
           case rv of
             0                             -> row
-            #{const MYSQL_DATA_TRUNCATED} -> row
+            #{const MYSQL_DATA_TRUNCATED} -> liftM Just $ mapM (uncurry $ fill stmt_) $ zip [0..] results
             #{const MYSQL_NO_DATA}        -> finalizeForeignPtr stmt__ >> return Nothing
             _                             -> statementError stmt_
-    where row = mapM cellValue results >>= \cells -> return $ Just cells
+    where row = liftM Just $ mapM cellValue results
+          fill stmt_ column bind = do
+            err <- peek $ bindError bind
+            if err == 1 then do len <- peek $ bindLength bind
+                                bracket (mallocBytes $ fromIntegral len) free $ \buffer_ ->
+                                    do let tempBind = bind { bindBuffer = buffer_, bindBufferLength = len }
+                                       rv <- with tempBind $ \bind_ -> mysql_stmt_fetch_column stmt_ bind_ column 0
+                                       when (rv /= 0) (statementError stmt_)
+                                       cellValue tempBind
+                        else cellValue bind
 
 -- Produces a single SqlValue cell value given the binding, handling
 -- nulls appropriately.
@@ -845,6 +854,9 @@ foreign import ccall unsafe mysql_fetch_field
 
 foreign import ccall unsafe mysql_stmt_fetch
     :: Ptr MYSQL_STMT -> IO CInt
+
+foreign import ccall unsafe mysql_stmt_fetch_column
+    :: Ptr MYSQL_STMT -> Ptr MYSQL_BIND -> CUInt -> CULong -> IO CInt
 
 foreign import ccall unsafe mysql_stmt_close
     :: Ptr MYSQL_STMT -> IO ()
