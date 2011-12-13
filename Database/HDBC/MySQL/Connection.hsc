@@ -44,6 +44,8 @@ data MySQLConnectInfo = MySQLConnectInfo
     , mysqlPort       :: Int
       -- | The absolute path of the server's Unix socket; e.g., @\"\/var\/lib\/mysql.sock\"@
     , mysqlUnixSocket :: String
+      -- | The group name in my.cnf from which it reads options; e.g., @\"test\"@
+    , mysqlGroup      :: Maybe String
     }
 
 {- | Typical connection information, meant to be overridden partially,
@@ -57,7 +59,7 @@ data MySQLConnectInfo = MySQLConnectInfo
 
 -}
 defaultMySQLConnectInfo :: MySQLConnectInfo
-defaultMySQLConnectInfo = MySQLConnectInfo "127.0.0.1" "root" "" "test" 3306 ""
+defaultMySQLConnectInfo = MySQLConnectInfo "127.0.0.1" "root" "" "test" 3306 "" Nothing
 
 data Connection = Connection
     { disconnect :: IO ()
@@ -104,6 +106,11 @@ connectMySQL :: MySQLConnectInfo -> IO Connection
 connectMySQL info = do
   mysql_ <- mysql_init nullPtr
   when (mysql_ == nullPtr) (error "mysql_init failed")
+  case mysqlGroup info of
+    Just group -> withCString group $ \group_ -> do
+                      _ <- mysql_options mysql_ #{const MYSQL_READ_DEFAULT_GROUP} (castPtr group_)
+                      return ()
+    Nothing -> return ()
   withCString (mysqlHost info) $ \host_ ->
       withCString (mysqlUser info) $ \user_ ->
           withCString (mysqlPassword info) $ \passwd_ ->
@@ -560,10 +567,19 @@ fetchRow mysql__ stmt__ results =
           rv <- mysql_stmt_fetch stmt_
           case rv of
             0                             -> row
-            #{const MYSQL_DATA_TRUNCATED} -> row
+            #{const MYSQL_DATA_TRUNCATED} -> liftM Just $ mapM (uncurry $ fill stmt_) $ zip [0..] results
             #{const MYSQL_NO_DATA}        -> finalizeForeignPtr stmt__ >> return Nothing
             _                             -> statementError stmt_
-    where row = mapM cellValue results >>= \cells -> return $ Just cells
+    where row = liftM Just $ mapM cellValue results
+          fill stmt_ column bind = do
+            err <- peek $ bindError bind
+            if err == 1 then do len <- peek $ bindLength bind
+                                bracket (mallocBytes $ fromIntegral len) free $ \buffer_ ->
+                                    do let tempBind = bind { bindBuffer = buffer_, bindBufferLength = len }
+                                       rv <- with tempBind $ \bind_ -> mysql_stmt_fetch_column stmt_ bind_ column 0
+                                       when (rv /= 0) (statementError stmt_)
+                                       cellValue tempBind
+                        else cellValue bind
 
 -- Produces a single SqlValue cell value given the binding, handling
 -- nulls appropriately.
@@ -800,6 +816,12 @@ foreign import ccall unsafe mysql_init
  :: Ptr MYSQL
  -> IO (Ptr MYSQL)
 
+foreign import ccall unsafe mysql_options
+ :: Ptr MYSQL
+ -> CInt
+ -> Ptr ()
+ -> IO CInt
+
 foreign import ccall unsafe mysql_real_connect
  :: Ptr MYSQL -- the context
  -> CString   -- hostname
@@ -845,6 +867,9 @@ foreign import ccall unsafe mysql_fetch_field
 
 foreign import ccall unsafe mysql_stmt_fetch
     :: Ptr MYSQL_STMT -> IO CInt
+
+foreign import ccall unsafe mysql_stmt_fetch_column
+    :: Ptr MYSQL_STMT -> Ptr MYSQL_BIND -> CUInt -> CULong -> IO CInt
 
 foreign import ccall unsafe mysql_stmt_close
     :: Ptr MYSQL_STMT -> IO ()
