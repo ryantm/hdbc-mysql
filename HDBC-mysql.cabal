@@ -1,7 +1,7 @@
 Name:             HDBC-mysql
 Category:         Database
 Synopsis:         MySQL driver for HDBC
-Version:          0.6.5.1
+Version:          0.6.6.0
 Stability:        Experimental
 Maintainer:       Bryan O'Sullivan <bos@serpentine.com>
 Author:           Chris Waterson
