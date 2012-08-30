@@ -4,7 +4,7 @@ module Database.HDBC.MySQL.RTS (withRTSSignalsBlocked) where
 
 import Control.Concurrent (runInBoundThread)
 import Control.Exception (finally)
-import Foreign.C.Types (CInt)
+import Foreign.C.Types (CInt(..))
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (Storable(..))
