@@ -1,7 +1,6 @@
 #!/usr/bin/env runhaskell
 
 \begin{code}
-{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances #-}
 import Distribution.Simple
 import Distribution.PackageDescription
 import Distribution.Version
@@ -27,26 +26,10 @@ main = defaultMainWithHooks simpleUserHooks {
     }
 }
 
- 
--- 'ConstOrId' is a @Cabal-1.16@ vs @Cabal-1.18@ compatibility hack,
--- 'programFindLocation' has a new (unused in this case)
--- parameter. 'ConstOrId' adds this parameter when types say it is
--- mandatory.
-
-class ConstOrId a b where
-    constOrId :: a -> b
-
-instance ConstOrId a a where
-    constOrId = id
-
-instance ConstOrId a (b -> a) where
-    constOrId = const
-
-
 mysqlConfigProgram = (simpleProgram "mysql_config") {
-    programFindLocation = \verbosity -> constOrId $ do
-      mysql_config  <- findProgramOnPath "mysql_config"  verbosity
-      mysql_config5 <- findProgramOnPath "mysql_config5" verbosity
+    programFindLocation = \verbosity _ -> do
+      mysql_config  <- findProgramLocation verbosity "mysql_config" 
+      mysql_config5 <- findProgramLocation verbosity "mysql_config5"
       return (mysql_config `mplus` mysql_config5)
   }
 
