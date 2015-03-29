@@ -1,7 +1,7 @@
 Name:             HDBC-mysql
 Category:         Database
 Synopsis:         MySQL driver for HDBC
-Version:          0.6.6.1
+Version:          0.6.6.2
 Stability:        Experimental
 Maintainer:       Bryan O'Sullivan <bos@serpentine.com>
 Author:           Chris Waterson
@@ -12,7 +12,7 @@ Homepage:         http://github.com/bos/hdbc-mysql
 Bug-Reports:      http://github.com/bos/hdbc-mysql/issues
 Build-Type:       Custom
 Tested-with:      GHC
-Cabal-Version:    >= 1.6
+Cabal-Version:    >= 1.8
 Description:
   This package provides a MySQL driver for HDBC, implemented via
   bindings to the C @mysqlclient@ library.
