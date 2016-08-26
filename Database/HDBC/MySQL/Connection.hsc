@@ -487,8 +487,7 @@ bindOfSqlValue (Types.SqlPOSIXTime t) =
   bindOfSqlValue $ Types.SqlUTCTime $ posixSecondsToUTCTime t
 
 -- A nasty helper function that cuts down on the boilerplate a bit.
-bindOfSqlValue' :: (Integral a, Storable b) => a -> Ptr b -> CInt -> Signedness -> IO MYSQL_BIND
-
+bindOfSqlValue' :: Integral a => a -> Ptr b -> CInt -> Signedness -> IO MYSQL_BIND
 bindOfSqlValue' len buf_ btype signedness = do
   let buflen = fromIntegral len
   isNull_ <- new (0 :: CChar)
