@@ -6,8 +6,6 @@ import Database.HDBC.MySQL
 
 connectDatabase :: IO Connection
 connectDatabase = connectMySQL defaultMySQLConnectInfo
-                  { mysqlHost = "putterwell"
-                  }
 
 go :: IO ()
 go = do conn <- connectDatabase
