@@ -1,43 +1,42 @@
-Name:             HDBC-mysql
-Category:         Database
-Synopsis:         MySQL driver for HDBC
-Version:          0.7.0.0
-Stability:        Experimental
-Maintainer:       Ryan Mulligan <ryan@ryantm.com>
-Author:           Chris Waterson
-Copyright:        2009-2010 Chris Waterson, 2011 MailRank
-License:          LGPL
-License-file:     COPYING
-Homepage:         http://github.com/ryantm/hdbc-mysql
-Bug-Reports:      http://github.com/ryantm/hdbc-mysql/issues
-Build-Type:       Custom
-Tested-with:      GHC
-Cabal-Version:    >= 1.24
-Description:
-  This package provides a MySQL driver for HDBC, implemented via
-  bindings to the C @mysqlclient@ library.
+name:             HDBC-mysql
+category:         Database
+synopsis:         MySQL driver for HDBC
+version:          0.7.0.0
+stability:        Experimental
+maintainer:       Ryan Mulligan <ryan@ryantm.com>
+author:           Chris Waterson
+copyright:        2009-2010 Chris Waterson, 2011 MailRank
+license:          LGPL
+license-file:     COPYING
+homepage:         http://github.com/ryantm/hdbc-mysql
+bug-reports:      http://github.com/ryantm/hdbc-mysql/issues
+build-type:       Custom
+tested-with:      GHC
+cabal-version:    >= 1.24
+description:
+            This package provides a MySQL driver for HDBC, implemented via
+            bindings to the C @mysqlclient@ library.
 extra-source-files:
-  ChangeLog
-  README.md
+                   ChangeLog
+                   README.md
 
 custom-setup
   setup-depends:
-    base >= 4.9 && < 5,
-    Cabal >= 1.24
+                base >= 4.9 && < 5,
+                Cabal >= 1.24
 
 library
-  Exposed-modules:  Database.HDBC.MySQL
-  Other-modules:
-    Database.HDBC.MySQL.Connection
-    Database.HDBC.MySQL.RTS
-
-  Build-Depends:
-    HDBC >= 2.1.0,
-    base >= 4.9 && < 5,
-    bytestring,
-    time,
-    utf8-string
-  ghc-options:      -Wall
+  exposed-modules:  Database.HDBC.MySQL
+  other-modules:
+                Database.HDBC.MySQL.Connection
+                Database.HDBC.MySQL.RTS
+  build-depends:
+                HDBC >= 2.1.0,
+                base >= 4.9 && < 5,
+                bytestring,
+                time,
+                utf8-string
+  ghc-options: -Wall
   extra-libraries: z ssl mysqlclient
   default-language: Haskell2010
 
