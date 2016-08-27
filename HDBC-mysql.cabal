@@ -1,9 +1,9 @@
 Name:             HDBC-mysql
 Category:         Database
 Synopsis:         MySQL driver for HDBC
-Version:          0.6.6.3
+Version:          0.6.6.4
 Stability:        Experimental
-Maintainer:       Ryan Mullgigan <ryan@ryantm.com>
+Maintainer:       Ryan Mulligan <ryan@ryantm.com>
 Author:           Chris Waterson
 Copyright:        2009-2010 Chris Waterson, 2011 MailRank
 License:          LGPL
