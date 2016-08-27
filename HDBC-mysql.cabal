@@ -18,7 +18,7 @@ Description:
   bindings to the C @mysqlclient@ library.
 extra-source-files:
   ChangeLog
-  README.markdown
+  README.md
 
 custom-setup
   setup-depends:
