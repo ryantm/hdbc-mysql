@@ -1,4 +1,4 @@
-{-# LANGUAGE EmptyDataDecls, ForeignFunctionInterface, ScopedTypeVariables #-}
+{-# LANGUAGE EmptyDataDecls, ForeignFunctionInterface, ScopedTypeVariables, CPP #-}
 
 module Database.HDBC.MySQL.Connection
     (
@@ -23,7 +23,9 @@ import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
 import Database.HDBC (throwSqlError)
 
+#if DEBUG
 import Debug.Trace
+#endif
 
 #include <mysql.h>
 
