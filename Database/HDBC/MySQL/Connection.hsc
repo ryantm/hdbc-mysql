@@ -428,7 +428,7 @@ bindOfSqlValue (Types.SqlWord64 n) = do
   buf_ <- new n
   bindOfSqlValue' (8::Int) buf_ #{const MYSQL_TYPE_LONGLONG} Unsigned
 
-bindOfSqlValue (Types.SqlEpochTime epoch) = 
+bindOfSqlValue (Types.SqlEpochTime epoch) =
   bindOfSqlValue (Types.SqlUTCTime t)
     where t = posixSecondsToUTCTime (fromIntegral epoch)
                                             
@@ -804,82 +804,186 @@ connectionError mysql_ = do
 {- ---------------------------------------------------------------------- -}
 
 mysql_get_client_info :: IO CString
-mysql_get_client_info = trace "mysql_get_client_info" mysql_get_client_info_
+mysql_get_client_info =
+#if DEBUG
+  trace "mysql_get_client_info"
+#endif
+    mysql_get_client_info_
 
 mysql_get_server_info :: Ptr MYSQL -> IO CString
-mysql_get_server_info = trace "mysql_get_server_info" mysql_get_server_info_
+mysql_get_server_info =
+#if DEBUG
+  trace "mysql_get_server_info"
+#endif
+    mysql_get_server_info_
 
 mysql_get_proto_info :: Ptr MYSQL -> IO CUInt
-mysql_get_proto_info = trace "mysql_get_proto_info" mysql_get_proto_info_
+mysql_get_proto_info =
+#if DEBUG
+  trace "mysql_get_proto_info"
+#endif
+    mysql_get_proto_info_
 
 mysql_init :: Ptr MYSQL -> IO (Ptr MYSQL)
-mysql_init = trace "mysql_init" mysql_init_
+mysql_init =
+#if DEBUG
+  trace "mysql_init"
+#endif
+    mysql_init_
 
 mysql_options :: Ptr MYSQL -> CInt -> Ptr () -> IO CInt
-mysql_options = trace "mysql_options" mysql_options_
+mysql_options =
+#if DEBUG
+  trace "mysql_options"
+#endif
+    mysql_options_
 
 mysql_real_connect :: Ptr MYSQL -> CString -> CString -> CString -> CString -> CInt -> CString -> IO (Ptr MYSQL)
-mysql_real_connect = trace "mysql_real_connect" mysql_real_connect_
+mysql_real_connect =
+#if DEBUG
+  trace "mysql_real_connect"
+#endif
+    mysql_real_connect_
 
 mysql_close :: FunPtr (Ptr MYSQL -> IO ())
-mysql_close = trace "mysql_close" mysql_close_
+mysql_close =
+#if DEBUG
+  trace "mysql_close"
+#endif
+    mysql_close_
 
 mysql_stmt_init :: Ptr MYSQL -> IO (Ptr MYSQL_STMT)
-mysql_stmt_init = trace "mysql_stmt_init" mysql_stmt_init_
+mysql_stmt_init =
+#if DEBUG
+  trace "mysql_stmt_init"
+#endif
+    mysql_stmt_init_
 
 mysql_stmt_prepare :: Ptr MYSQL_STMT -> CString -> CInt -> IO CInt
-mysql_stmt_prepare = trace "mysql_stmt_prepare" mysql_stmt_prepare_
+mysql_stmt_prepare =
+#if DEBUG
+  trace "mysql_stmt_prepare"
+#endif
+    mysql_stmt_prepare_
 
 mysql_stmt_result_metadata :: Ptr MYSQL_STMT -> IO (Ptr MYSQL_RES)
-mysql_stmt_result_metadata = trace "mysql_stmt_result_metadata" mysql_stmt_result_metadata_
+mysql_stmt_result_metadata =
+#if DEBUG
+  trace "mysql_stmt_result_metadata"
+#endif
+    mysql_stmt_result_metadata_
 
 mysql_stmt_bind_param :: Ptr MYSQL_STMT -> Ptr MYSQL_BIND -> IO CChar
-mysql_stmt_bind_param = trace "mysql_stmt_bind_param" mysql_stmt_bind_param_
+mysql_stmt_bind_param =
+#if DEBUG
+  trace "mysql_stmt_bind_param"
+#endif
+    mysql_stmt_bind_param_
 
 mysql_stmt_bind_result :: Ptr MYSQL_STMT -> Ptr MYSQL_BIND -> IO CChar
-mysql_stmt_bind_result = trace "mysql_stmt_bind_result" mysql_stmt_bind_result_
+mysql_stmt_bind_result =
+#if DEBUG
+  trace "mysql_stmt_bind_result"
+#endif
+    mysql_stmt_bind_result_
 
 mysql_stmt_param_count :: Ptr MYSQL_STMT -> IO CULong
-mysql_stmt_param_count = trace "mysql_stmt_param_count" mysql_stmt_param_count_
+mysql_stmt_param_count =
+#if DEBUG
+  trace "mysql_stmt_param_count"
+#endif
+    mysql_stmt_param_count_
 
 mysql_free_result :: Ptr MYSQL_RES -> IO ()
-mysql_free_result = trace "mysql_free_result" mysql_free_result_
+mysql_free_result =
+#if DEBUG
+  trace "mysql_free_result"
+#endif
+    mysql_free_result_
 
 mysql_stmt_execute :: Ptr MYSQL_STMT -> IO CInt
-mysql_stmt_execute = trace "mysql_stmt_execute" mysql_stmt_execute_
+mysql_stmt_execute =
+#if DEBUG
+  trace "mysql_stmt_execute"
+#endif
+    mysql_stmt_execute_
 
 mysql_stmt_affected_rows :: Ptr MYSQL_STMT -> IO CULLong
-mysql_stmt_affected_rows = trace "mysql_stmt_affected_rows" mysql_stmt_affected_rows_
+mysql_stmt_affected_rows =
+#if DEBUG
+  trace "mysql_stmt_affected_rows"
+#endif
+    mysql_stmt_affected_rows_
 
 mysql_fetch_field :: Ptr MYSQL_RES -> IO (Ptr MYSQL_FIELD)
-mysql_fetch_field = trace "mysql_fetch_field" mysql_fetch_field_
+mysql_fetch_field =
+#if DEBUG
+  trace "mysql_fetch_field"
+#endif
+    mysql_fetch_field_
 
 mysql_stmt_fetch :: Ptr MYSQL_STMT -> IO CInt
-mysql_stmt_fetch = trace "mysql_stmt_fetch" mysql_stmt_fetch_
+mysql_stmt_fetch =
+#if DEBUG
+  trace "mysql_stmt_fetch"
+#endif
+    mysql_stmt_fetch_
 
 mysql_stmt_fetch_column :: Ptr MYSQL_STMT -> Ptr MYSQL_BIND -> CUInt -> CULong -> IO CInt
-mysql_stmt_fetch_column = trace "mysql_stmt_fetch_column" mysql_stmt_fetch_column_
+mysql_stmt_fetch_column =
+#if DEBUG
+  trace "mysql_stmt_fetch_column"
+#endif
+    mysql_stmt_fetch_column_
 
 mysql_stmt_close :: Ptr MYSQL_STMT -> IO ()
-mysql_stmt_close = trace "mysql_stmt_close" mysql_stmt_close_
+mysql_stmt_close =
+#if DEBUG
+  trace "mysql_stmt_close"
+#endif
+    mysql_stmt_close_
 
 mysql_stmt_errno :: Ptr MYSQL_STMT -> IO CInt
-mysql_stmt_errno = trace "mysql_stmt_errno" mysql_stmt_errno_
+mysql_stmt_errno =
+#if DEBUG
+  trace "mysql_stmt_errno"
+#endif
+    mysql_stmt_errno_
 
 mysql_stmt_error :: Ptr MYSQL_STMT -> IO CString
-mysql_stmt_error = trace "mysql_stmt_error" mysql_stmt_error_
+mysql_stmt_error =
+#if DEBUG
+  trace "mysql_stmt_error"
+#endif
+    mysql_stmt_error_
 
 mysql_errno :: Ptr MYSQL -> IO CInt
-mysql_errno = trace "mysql_errno" mysql_errno_
+mysql_errno =
+#if DEBUG
+  trace "mysql_errno"
+#endif
+    mysql_errno_
 
 mysql_error :: Ptr MYSQL -> IO CString
-mysql_error = trace "mysql_error" mysql_error_
+mysql_error =
+#if DEBUG
+  trace "mysql_error"
+#endif
+    mysql_error_
 
 mysql_autocommit :: Ptr MYSQL -> CChar -> IO CChar
-mysql_autocommit = trace "mysql_autocommit" mysql_autocommit_
+mysql_autocommit =
+#if DEBUG
+  trace "mysql_autocommit"
+#endif
+    mysql_autocommit_
 
 mysql_query :: Ptr MYSQL -> CString -> IO CInt
-mysql_query = trace "mysql_query" mysql_query_
+mysql_query =
+#if DEBUG
+  trace "mysql_query"
+#endif
+    mysql_query_
 
 -- Here are all the FFI imports.
 

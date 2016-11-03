@@ -20,6 +20,10 @@ extra-source-files:
   ChangeLog
   README.markdown
 
+flag debug
+  description: Enable debug support
+  default:     False
+
 library
   Exposed-modules:  Database.HDBC.MySQL
   Other-modules:
@@ -32,6 +36,8 @@ library
     time,
     utf8-string
   ghc-options:      -Wall
+  if flag(debug)
+    cpp-options:    -DDEBUG
   Extra-Libraries: mysqlclient
 
 source-repository head
