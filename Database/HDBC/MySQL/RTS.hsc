@@ -45,6 +45,8 @@ data SigSet
 instance Storable SigSet where
     sizeOf    _ = #{size sigset_t}
     alignment _ = alignment (undefined :: Ptr CInt)
+    peek _ = undefined -- peek is unused
+    poke _ = undefined -- poke is unused
 
 foreign import ccall unsafe "signal.h sigaddset" sigaddset
     :: Ptr SigSet -> CInt -> IO ()
