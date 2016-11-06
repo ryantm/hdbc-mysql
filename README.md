@@ -93,7 +93,7 @@ ghc --make -package HUnit -package HDBC -Wall -i../dist/build -i.. -L/opt/local/
 One issue is that I want the location of the MySQL library to come
 from the configuration data, rather than be hard-coded.
 
-## Development on with nix
+## Developing hdbc-mysql with nix
 
 ```
 # Nix shell
