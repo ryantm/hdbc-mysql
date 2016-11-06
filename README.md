@@ -1,10 +1,10 @@
-HDBC-mysql
-==========
+#HDBC-mysql
 
 This is a "native" HDBC driver for MySQL that makes use of
 libmysqlclient to communicate with a MySQL server.  By way of
 synopsis:
 
+```haskell
   import Control.Monad
   import Database.HDBC
   import Database.HDBC.MySQL
@@ -16,13 +16,14 @@ synopsis:
 
             rows <- quickQuery' conn "SELECT 1 + 1" []
             forM_ rows $ \row -> putStrLn $ show row
+```
 
 At the moment, please consider this to be "alpha" software.  As far as
 I can tell, it works.  There are some limitations that you should be
 aware of.
 
-Caveats
-=======
+## Caveats
+
 
   * This works with MySQL server and client libraries 5.0.75.  I
     haven't tried with 4.x nor 5.1.  I suspect that using a server
@@ -71,20 +72,39 @@ Caveats
   * It probably makes sense to marshall to the SqlByteString type when
     retrieving BLOB data.
 
-Testing
-=======
+## Testing
 
 There's a little test program that runs a query and spews out the
 results.  To compile it,
 
+```
   ghc -idist/build -L/opt/local/lib/mysql5/mysql -lmysqlclient --make Test
+```
 
 I'm still trying to get the Makefile right so that it can build the
 test sources: it's not there yet.  Here's how I've been doing it, for
 now:
 
+```
   cd testsrc
   ghc --make -package HUnit -package HDBC -Wall -i../dist/build -i.. -L/opt/local/lib/mysql5/mysql -lmysqlclient -o runtests runtests.hs
+```
 
 One issue is that I want the location of the MySQL library to come
 from the configuration data, rather than be hard-coded.
+
+## Development on with nix
+
+```
+  # Nix shell
+  nix-shell -p haskell.packages.ghc801.ghc gcc mysql57 pkgconfig zlib openssl haskellPackages.haddock
+
+  # Use Cabal to build
+  cabal clean && cabal build
+
+  # Build test script
+  ghc -idist/build -L/nix/store/vksgj509kdnk3rva0x64qwp21nzrxy9b-mariadb-10.1.16/lib -lmysqlclient --make Test
+
+  # Run test script
+  ./Test
+```
