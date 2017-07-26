@@ -1,4 +1,4 @@
-#HDBC-mysql
+# HDBC-mysql
 
 This is a "native" HDBC driver for MySQL that makes use of
 libmysqlclient to communicate with a MySQL server.  By way of
