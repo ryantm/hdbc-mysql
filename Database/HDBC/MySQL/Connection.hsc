@@ -110,7 +110,7 @@ connectMySQL :: MySQLConnectInfo -> IO Connection
 connectMySQL info = do
   mysql_ <- mysql_init nullPtr
   when (mysql_ == nullPtr) (error "mysql_init failed")
-  withCString "utf8" $ \csname_ -> do
+  withCString "utf8mb4" $ \csname_ -> do
       rv0 <- mysql_set_character_set mysql_ csname_
       when (rv0 /= 0) (error "mysql_set_character_set failed")
   case mysqlGroup info of
