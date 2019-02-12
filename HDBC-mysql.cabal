@@ -1,7 +1,7 @@
 name:             HDBC-mysql
 category:         Database
 synopsis:         MySQL driver for HDBC
-version:          0.7.0.0
+version:          0.7.0.1
 stability:        Experimental
 maintainer:       Ryan Mulligan <ryan@ryantm.com>
 author:           Chris Waterson
