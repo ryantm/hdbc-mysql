@@ -110,15 +110,12 @@ connectMySQL :: MySQLConnectInfo -> IO Connection
 connectMySQL info = do
   mysql_ <- mysql_init nullPtr
   when (mysql_ == nullPtr) (error "mysql_init failed")
-  withCString "utf8mb4" $ \csname_ -> do
-      rv0 <- mysql_set_character_set mysql_ csname_
-      when (rv0 /= 0) (error "mysql_set_character_set failed")
   case mysqlGroup info of
     Just group -> withCString group $ \group_ -> do
                       _ <- mysql_options mysql_ #{const MYSQL_READ_DEFAULT_GROUP} (castPtr group_)
                       return ()
     Nothing -> return ()
-  withCString (mysqlHost info) $ \host_ ->
+  mysql <- withCString (mysqlHost info) $ \host_ ->
       withCString (mysqlUser info) $ \user_ ->
           withCString (mysqlPassword info) $ \passwd_ ->
               withCString (mysqlDatabase info) $ \db_ ->
@@ -128,6 +125,10 @@ connectMySQL info = do
                                                   unixSocket_
                          when (rv == nullPtr) (connectionError mysql_)
                          wrap mysql_
+  withCString "utf8mb4" $ \csname_ -> do
+      rv0 <- mysql_set_character_set mysql_ csname_
+      when (rv0 /= 0) (error "mysql_set_character_set failed")
+  return mysql
     where
       -- Returns the HDBC wrapper for the native MySQL connection
       -- object.
