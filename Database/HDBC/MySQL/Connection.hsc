@@ -122,7 +122,7 @@ connectMySQL info = do
                   withCString (mysqlUnixSocket info) $ \unixSocket_ ->
                       do rv <- mysql_real_connect mysql_ host_ user_ passwd_ db_
                                                   (fromIntegral $ mysqlPort info)
-                                                  unixSocket_
+                                                  unixSocket_ 0
                          when (rv == nullPtr) (connectionError mysql_)
                          wrap mysql_
     where
@@ -839,7 +839,7 @@ mysql_options =
 #endif
     mysql_options_
 
-mysql_real_connect :: Ptr MYSQL -> CString -> CString -> CString -> CString -> CInt -> CString -> IO (Ptr MYSQL)
+mysql_real_connect :: Ptr MYSQL -> CString -> CString -> CString -> CString -> CInt -> CString -> CULong -> IO (Ptr MYSQL)
 mysql_real_connect =
 #if DEBUG
   trace "mysql_real_connect"
@@ -1015,6 +1015,7 @@ foreign import ccall unsafe "mysql_real_connect" mysql_real_connect_
  -> CString   -- database
  -> CInt      -- port
  -> CString   -- unix socket
+ -> CULong    -- flags
  -> IO (Ptr MYSQL)
 
 foreign import ccall unsafe "&mysql_close" mysql_close_
