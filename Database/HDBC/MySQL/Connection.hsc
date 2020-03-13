@@ -115,7 +115,7 @@ connectMySQL info = do
                       _ <- mysql_options mysql_ #{const MYSQL_READ_DEFAULT_GROUP} (castPtr group_)
                       return ()
     Nothing -> return ()
-  withCString (mysqlHost info) $ \host_ ->
+  mysql <- withCString (mysqlHost info) $ \host_ ->
       withCString (mysqlUser info) $ \user_ ->
           withCString (mysqlPassword info) $ \passwd_ ->
               withCString (mysqlDatabase info) $ \db_ ->
@@ -125,6 +125,10 @@ connectMySQL info = do
                                                   unixSocket_
                          when (rv == nullPtr) (connectionError mysql_)
                          wrap mysql_
+  withCString "utf8mb4" $ \csname_ -> do
+      rv0 <- mysql_set_character_set mysql_ csname_
+      when (rv0 /= 0) (error "mysql_set_character_set failed")
+  return mysql
     where
       -- Returns the HDBC wrapper for the native MySQL connection
       -- object.
@@ -832,6 +836,13 @@ mysql_init =
 #endif
     mysql_init_
 
+mysql_set_character_set :: Ptr MYSQL -> CString -> IO CInt
+mysql_set_character_set =
+#if DEBUG
+    trace "mysql_set_character_set_"
+#endif
+    mysql_set_character_set_
+
 mysql_options :: Ptr MYSQL -> CInt -> Ptr () -> IO CInt
 mysql_options =
 #if DEBUG
@@ -1000,6 +1011,9 @@ foreign import ccall unsafe "mysql_get_proto_info" mysql_get_proto_info_
 foreign import ccall unsafe "mysql_init" mysql_init_
  :: Ptr MYSQL
  -> IO (Ptr MYSQL)
+
+foreign import ccall unsafe "mysql_set_character_set" mysql_set_character_set_
+ :: Ptr MYSQL -> CString -> IO CInt
 
 foreign import ccall unsafe "mysql_options" mysql_options_
  :: Ptr MYSQL
