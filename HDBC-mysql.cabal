@@ -1,11 +1,10 @@
 name:             HDBC-mysql
 category:         Database
 synopsis:         MySQL driver for HDBC
-version:          0.7.0.1
-stability:        Experimental
+version:          1.0.0.0
 maintainer:       Ryan Mulligan <ryan@ryantm.com>
 author:           Chris Waterson
-copyright:        2009-2010 Chris Waterson, 2011 MailRank
+copyright:        2009-2010 Chris Waterson, 2011 MailRank, 2020 Ryan Mulligan, et al.
 license:          LGPL
 license-file:     COPYING
 homepage:         http://github.com/ryantm/hdbc-mysql

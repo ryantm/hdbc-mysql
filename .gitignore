@@ -2,3 +2,4 @@ dist
 *.hi
 *.o
 /Test
+/dist-newstyle/

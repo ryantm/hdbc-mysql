@@ -72,6 +72,8 @@ aware of.
   * It probably makes sense to marshall to the SqlByteString type when
     retrieving BLOB data.
 
+  * The only supported client charset is `utf8mb4`.
+
 ## Testing
 
 There's a little test program that runs a query and spews out the
@@ -97,13 +99,13 @@ from the configuration data, rather than be hard-coded.
 
 ```
 # Nix shell
-nix-shell -p haskell.packages.ghc801.ghc gcc mysql57 pkgconfig zlib openssl haskellPackages.haddock
+nix-shell -p ghc gcc mysql pkgconfig zlib openssl haskellPackages.haddock
 
 # Use Cabal to build
-cabal clean && cabal build
+cabal clean && cabal v2-build
 
 # Build test script
-ghc -idist/build -L/nix/store/vksgj509kdnk3rva0x64qwp21nzrxy9b-mariadb-10.1.16/lib -lmysqlclient --make Test
+ghc -idist/build -L/nix/store/l2yf2p42lqpbkjn428gx9w76dxbhaaga-mariadb-server-10.3.20/lib/ -lmysqlclient --make Test
 
 # Run test script
 ./Test

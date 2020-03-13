@@ -1,3 +1,7 @@
+2020-03-12  Ryan Mulligan   <ryan@ryantm.com>
+	* Set default character set to utf8mb4 #27
+	* Pass flags to mysql_real_connect #29
+
 2010-06-01  Chris Waterson  <waterson@maubi.net>
 
 	* Database/HDBC/MySQL/Connection.hsc.  Add runRaw, patch from Rune
@@ -45,4 +49,3 @@
 	we need the full size of the MYSQL_TIME struct.  Leak connections
 	and statements until I can figure out how to keep the ForeignPtr's
 	alive.
-

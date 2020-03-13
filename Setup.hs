@@ -1,6 +1,3 @@
-#!/usr/bin/env runhaskell
-
-\begin{code}
 import Distribution.Simple
 import Distribution.PackageDescription
 import Distribution.Version
@@ -35,7 +32,7 @@ mysqlConfigProgram = (simpleProgram "mysql_config") {
 
 mysqlBuildInfo :: LocalBuildInfo -> IO BuildInfo
 mysqlBuildInfo lbi = do
-  let mysqlConfig = rawSystemProgramStdoutConf verbosity mysqlConfigProgram (withPrograms lbi)
+  let mysqlConfig = getDbProgramOutput verbosity mysqlConfigProgram (withPrograms lbi)
       ws = " \n\r\t"
 
   includeDirs <- return . map (drop 2) . split ws =<< mysqlConfig ["--include"]
@@ -55,4 +52,3 @@ split xs cs = split' $ dropWhile (`elem` xs) cs
               let (run, cs1) = span (`notElem` xs) cs0
                   cs2        = dropWhile (`elem` xs) cs1
               in run:(split' cs2)
-\end{code}
