@@ -437,7 +437,7 @@ bindOfSqlValue (Types.SqlWord64 n) = do
 bindOfSqlValue (Types.SqlEpochTime epoch) =
   bindOfSqlValue (Types.SqlUTCTime t)
     where t = posixSecondsToUTCTime (fromIntegral epoch)
-                                            
+
 bindOfSqlValue (Types.SqlUTCTime utct) = do
   let t = utcToMysqlTime utct
   buf_ <- new t
@@ -539,19 +539,21 @@ resultOfField field =
 
 -- Returns the appropriate result type for a particular host type.
 boundType :: CInt -> CUInt -> CInt
-boundType #{const MYSQL_TYPE_STRING}     _ = #{const MYSQL_TYPE_VAR_STRING}
-boundType #{const MYSQL_TYPE_TINY}       _ = #{const MYSQL_TYPE_LONG}
-boundType #{const MYSQL_TYPE_SHORT}      _ = #{const MYSQL_TYPE_LONG}
-boundType #{const MYSQL_TYPE_INT24}      _ = #{const MYSQL_TYPE_LONG}
-boundType #{const MYSQL_TYPE_YEAR}       _ = #{const MYSQL_TYPE_LONG}
-boundType #{const MYSQL_TYPE_ENUM}       _ = #{const MYSQL_TYPE_LONG}
-boundType #{const MYSQL_TYPE_DECIMAL}    0 = #{const MYSQL_TYPE_LONGLONG}
-boundType #{const MYSQL_TYPE_DECIMAL}    _ = #{const MYSQL_TYPE_DOUBLE}
-boundType #{const MYSQL_TYPE_NEWDECIMAL} 0 = #{const MYSQL_TYPE_LONGLONG}
-boundType #{const MYSQL_TYPE_NEWDECIMAL} _ = #{const MYSQL_TYPE_DOUBLE}
-boundType #{const MYSQL_TYPE_FLOAT}      _ = #{const MYSQL_TYPE_DOUBLE}
-boundType #{const MYSQL_TYPE_BLOB}       _ = #{const MYSQL_TYPE_VAR_STRING}
-boundType t                              _ = t
+boundType #{const MYSQL_TYPE_STRING}      _ = #{const MYSQL_TYPE_VAR_STRING}
+boundType #{const MYSQL_TYPE_TINY}        _ = #{const MYSQL_TYPE_LONG}
+boundType #{const MYSQL_TYPE_SHORT}       _ = #{const MYSQL_TYPE_LONG}
+boundType #{const MYSQL_TYPE_INT24}       _ = #{const MYSQL_TYPE_LONG}
+boundType #{const MYSQL_TYPE_YEAR}        _ = #{const MYSQL_TYPE_LONG}
+boundType #{const MYSQL_TYPE_ENUM}        _ = #{const MYSQL_TYPE_LONG}
+boundType #{const MYSQL_TYPE_DECIMAL}     0 = #{const MYSQL_TYPE_LONGLONG}
+boundType #{const MYSQL_TYPE_DECIMAL}     _ = #{const MYSQL_TYPE_DOUBLE}
+boundType #{const MYSQL_TYPE_NEWDECIMAL}  0 = #{const MYSQL_TYPE_LONGLONG}
+boundType #{const MYSQL_TYPE_NEWDECIMAL}  _ = #{const MYSQL_TYPE_DOUBLE}
+boundType #{const MYSQL_TYPE_FLOAT}       _ = #{const MYSQL_TYPE_DOUBLE}
+boundType #{const MYSQL_TYPE_BLOB}        _ = #{const MYSQL_TYPE_VAR_STRING}
+boundType #{const MYSQL_TYPE_MEDIUM_BLOB} _ = #{const MYSQL_TYPE_VAR_STRING}
+boundType #{const MYSQL_TYPE_LONG_BLOB}   _ = #{const MYSQL_TYPE_VAR_STRING}
+boundType t                               _ = t
 
 -- Returns the amount of storage required for a particular result
 -- type.
@@ -1094,4 +1096,3 @@ foreign import ccall unsafe "mysql_query" mysql_query_
 
 foreign import ccall unsafe memset
     :: Ptr () -> CInt -> CSize -> IO ()
-
